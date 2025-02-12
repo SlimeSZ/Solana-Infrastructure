@@ -57,7 +57,6 @@ class DexScreenerAPI:
                 
                 json_data = await response.json()
                 if not json_data or 'pairs' not in json_data or not json_data['pairs']:
-                    print(f"[INFO] No pairs found for {ca[:8]}... - Token might be on Pump")
                     self.token_on_pump = True
                     return
                 
@@ -68,10 +67,8 @@ class DexScreenerAPI:
                     self.pool_address = pair.get('pairAddress', '')
                     self.pair_created_at = pair.get('pairCreatedAt')
                     found_pair = True
-                    print("\nToken Metrics:")
                     #get mc
                     self.token_mc = float(pair.get('fdv', 0))
-                    print(f"- Market Cap: ${self.token_mc:,.2f}")
 
                     #get volume
                     volume_data = pair.get('volume', {})
@@ -79,7 +76,6 @@ class DexScreenerAPI:
                     self.token_1h_vol = float(volume_data.get('h1', 0))
                     self.token_6h_vol = float(volume_data.get('h6', 0))
                     self.token_24h_vol = float(volume_data.get('h24', 0))
-                    print(f"- 1h Volume: ${self.token_1h_vol:,.2f}")
 
                     #get buys & sells
                     txns_data = pair.get('txns', {})
@@ -102,7 +98,6 @@ class DexScreenerAPI:
                     #get liquidity
                     liquidity_data = pair.get('liquidity', {})
                     self.token_liquidity = float(liquidity_data.get('usd', 0))
-                    print(f"- Liquidity: ${self.token_liquidity:,.2f}")
                     
                     #x, tg, and dex url
                     info = pair.get('info', {})
@@ -115,15 +110,10 @@ class DexScreenerAPI:
                             self.has_x = True
                             self.x_link = social.get('url', 'No Twitter Link')
                     self.token_dex_url = pair.get('url', '')
-                    
-                    print("\nSocial Links:")
-                    print(f"- Telegram: {'Yes' if self.has_tg else 'No'}")
-                    print(f"- Twitter: {'Yes' if self.has_x else 'No'}")
-                    print(f"- DEX URL: {self.token_dex_url}")
             
             return {
                 'token_created_at': self.pair_created_at,
-                'pool_addres': self.pool_address,
+                'pool_address': self.pool_address,
                 'token_mc': self.token_mc,
                 'token_5m_vol': self.token_5m_vol,
                 'self.token_1h_vol': self.token_1h_vol,
