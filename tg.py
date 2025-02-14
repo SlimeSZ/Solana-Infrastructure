@@ -89,6 +89,7 @@ class SoulScannerBot:
                         'holder_count': holder_count,
                         'top_percentage': top_percentage,
                         'dev_holding': dev_percentage,
+                        'sniper_percent': sniper_percent,
                         'scans': scans
                     }
             
@@ -101,6 +102,7 @@ class SoulScannerBot:
                         'holder_count': holder_count,
                         'top_percentage': top_percentage,
                         'dev_holding': dev_percentage,
+                        'sniper_percent': sniper_percent,
                         'scans': scans
                     }
                 return False

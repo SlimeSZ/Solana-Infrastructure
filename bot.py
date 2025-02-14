@@ -20,6 +20,7 @@ from walletpnl import WAlletPNL
 from compositescore import CompositeScore
 from marketcap import MarketcapFetcher
 from bdmetadata import BuySellTradeUniqueData, Tokenomics
+from twoxmonitor import TwoXChecker
 from webhooks import AlefAlertWebhook, MultiAlert, ScoreReportWebhook
 
 intents = discord.Intents.all()
@@ -49,6 +50,7 @@ class ScrapeAD:
         self.backup_mc = MarketcapFetcher()
         self.bd_trade_data = BuySellTradeUniqueData()
         self.bd_tokenomic_data = Tokenomics()
+        self.twox = TwoXChecker()
         
         #webhooks
         self.multi_alert_webhook = ""
@@ -346,6 +348,16 @@ class ScrapeAD:
                 print(f"Error in degen processing: {str(e)}")
                 await asyncio.sleep(2)
 
+    async def start_2x_monitoring(self, ca, token_name):
+        """Start monitoring a token for 2x price movements"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Create task for 2x monitoring
+                await self.twox.start_marketcap_monitoring(ca, token_name)
+                print(f"Started 2x monitoring for {token_name} ({ca})")
+        except Exception as e:
+            print(f"Error starting 2x monitoring for {ca}: {str(e)}")
+
     async def check_multialert(self, session, token_name, ca, channel_name):
         if self.serv_data is None:
             await self.initialize()
@@ -385,6 +397,9 @@ class ScrapeAD:
                 self.multi_alerted_cas.add(ca)
                 print(f"\nMUlTI ALERT FOUND\n{"*" * 50}")
 
+                #create two_x checker task
+                asyncio.create_task(self.start_2x_monitoring(ca, token_name))
+
                 try:
                 #dex calls & processes:
                     dex_data = await self.dex.fetch_token_data_from_dex(session, ca) or {}
@@ -403,14 +418,13 @@ class ScrapeAD:
                     token_name = dex_data.get('token_name') or backup_bd_data.get('name', 'Unknown Name')
                     backup_mc = await self.backup_mc.calculate_marketcap(ca)
                     marketcap = backup_bd_data.get('marketcap', backup_mc)
-                    m5_vol = dex_data.get('token_5m_vol', 0)
+                    #m5_vol = dex_data.get('token_5m_vol', 0)
                     if backup_bd_data:
                         m30_vol = backup_bd_data.get('30_min_vol', 0)
                         m30_vol_change = backup_bd_data.get('30_min_vol_percent_change', 0)
                         print(f"30m VOL: {m30_vol} || {m30_vol_change} % Change in vol")
-                    liquidity = dex_data.get('token_liquidiry', 0) or backup_bd_data.get('liquidity', 0)
+                    liquidity = backup_bd_data.get('liquidity', 0)
                     print(f"Liquidity: {liquidity}")
-                    token_created_at = dex_data.get('token_created_at', 0)
                     pool_address = dex_data.get('pool_address', 0)
                     print(f"MC: {marketcap}")
                     print(f"Liquidity: {liquidity}")
@@ -545,13 +559,15 @@ class ScrapeAD:
                         holder_count = unique_bd_data['holders']
                         #top_hold = soul_data['top_percentage']
                         dev_holding = soul_data['dev_holding']
+                        sniper_percent = soul_data['sniper_percent']
 
                         tg_metrics = {
                             'token_migrated': False,
                             'holding_percentage': None,
                             'holder_count': holder_count,
                             #'top_holding_percentage': top_hold,
-                            'dev_holding_percentage': dev_holding
+                            'dev_holding_percentage': dev_holding,
+                            'sniper_percent': sniper_percent
                         }
                 
                         if soul_data['passes']:
@@ -582,6 +598,7 @@ class ScrapeAD:
                 print(f"Holder Count: {tg_metrics['holder_count']}")
                 #print(f"Top Holders hold total of: {tg_metrics['top_holding_percentage']} %")
                 print(f"Dev holds: {tg_metrics['dev_holding_percentage']} %" )
+                print(f"Sniper Percent: {tg_metrics['sniper_percent']}")
 
                 #dex paid check
                 dex_paid = await self.wallet_pnl_tg.send_and_recieve_message_dex_paid(ca)
@@ -743,7 +760,8 @@ class ScrapeAD:
                     new_unique_wallet_1h_change=new_unique_wallet_percent_change_1h,
                     trade_change_30m=trade_percent_change_30,
                     buy_change_30m=buy_percent_change_30m,
-                    sell_change_30m=sell_percent_change_30m
+                    sell_change_30m=sell_percent_change_30m,
+                    sniper_percent=sniper_percent
                 )
                 if score_data:
                     await self.score_webhook_usage.send_score_report(ca, token_name, score_data)
@@ -753,7 +771,7 @@ class ScrapeAD:
                     token_name=token_name,
                     ca=ca,
                     marketcap=marketcap,
-                    m5_vol=m5_vol,
+                    #m5_vol=m5_vol,
                     liquidity=liquidity,
                     telegram=telegram,
                     twitter=twitter,
@@ -784,15 +802,9 @@ class ScrapeAD:
                     trade_change_30m=trade_percent_change_30m,
                     buy_change_30m=buy_percent_change_30m,
                     sell_change_30m=sell_percent_change_30m,
-                    channel_text=channel_text
-                )
-
-
-
-
-
-
-                        
+                    channel_text=channel_text,
+                    sniper_percent=sniper_percent
+                )     
         
         except Exception as e:
             print(f"Error in running check for multialert: {str(e)}")
