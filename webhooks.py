@@ -61,9 +61,20 @@ class MultiAlert:
     def __init__(self):
         pass
 
-    async def multialert_webhook(self, token_name, ca, marketcap, m5_vol, liquidity, telegram, twitter, photon_link, bull_x_link, dex_link, swt_count, swt_buys, swt_sells, fresh_count, fresh_buys, fresh_sells, last_3_tx, holder_count, dev_holding_percentage, token_migrated, passes_soulscanner, passes_bundlebot, dex_paid, token_age, top_10_holding_percentage, holders_over_5, wallet_data):
+    async def multialert_webhook(self, token_name, ca, marketcap, m5_vol, liquidity, telegram, twitter, photon_link, bull_x_link, dex_link, swt_count, swt_buys, swt_sells, fresh_count, fresh_buys, fresh_sells, last_3_tx, holder_count, dev_holding_percentage, token_migrated, passes_soulscanner, passes_bundlebot, dex_paid, token_age, top_10_holding_percentage, holders_over_5, wallet_data, m30_vol, m30_vol_change, new_unique_wallets_30m, new_unique_wallet_30m_change, trade_change_30m, buy_change_30m, sell_change_30m, channel_text):
         try:
-            # Create embed data directly
+            #place holders
+            new_unique_wallet_30m_change = new_unique_wallet_30m_change or 0
+            trade_change_30m = trade_change_30m or 0
+            buy_change_30m = buy_change_30m or 0
+            sell_change_30m = sell_change_30m or 0
+            m30_vol = m30_vol or 0
+            m30_vol_change = m30_vol_change or 0
+            uniqueplaceholder = "Increase" if new_unique_wallet_30m_change > 0 else "Decrease"
+            tradeplaceholder = "Increase" if trade_change_30m > 0 else "Decrease"
+            buyplaceholder = "Increase" if buy_change_30m > 0 else "Decrease"
+            sellplaceholder = "Increase" if sell_change_30m > 0 else "Decrease"
+
             embed = {
                 "title": "🚨 Multi Ape Alert",
                 "color": 0x00ff00,
@@ -75,6 +86,10 @@ class MultiAlert:
                             f"💰 Marketcap: ${marketcap:,.2f}\n"
                             f"💧 Liquidity: ${liquidity:,.2f}\n"
                             f"📊 5m Volume: ${m5_vol:,.2f}\n"
+                            f"📊 30m Volume: ${m30_vol:,.2f} -- Change of: {m30_vol_change:.2f}%\n"
+                            f" Total Trades have {tradeplaceholder}d by {trade_change_30m:.2f} in the last 30 min\n"
+                            f" Buys have {buyplaceholder}d by {buy_change_30m:.2f} in the last 30 min \n"
+                            f" Sells have {sellplaceholder}d by {sell_change_30m:.2f} in the last 30 min"
                             f"⏰ Age: {token_age['value']} {token_age['unit']}\n" 
                         ),
                         "inline": False
@@ -88,12 +103,18 @@ class MultiAlert:
                         "inline": False
                     },
                     {
+                        "name": f"{token_name} aped by wallets in:",
+                        "value": f"{channel_text}",
+                        "inline": False
+                    },
+                    {
                         "name": "📊 Holder Analysis",
                         "value": (
                             f"👥 Total Holders: {holder_count}\n"
-                            f"📊 Top 10 Hold: {top_10_holding_percentage}%\n"
+                            f"📊 Top 10 Hold: {top_10_holding_percentage:.2f}%\n"
                             f"⚠️ Holders >5%: {holders_over_5}\n"
-                            f"👨‍💼 Dev Holding: {dev_holding_percentage}%\n"
+                            f"👨‍💼 Dev Holding: {dev_holding_percentage:.2f}%\n"
+                            f" {new_unique_wallets_30m} New Unique Wallets in 30min. {uniqueplaceholder} of {new_unique_wallet_30m_change}"
                         ),
                         "inline": False
                     },
@@ -130,15 +151,10 @@ class MultiAlert:
                         "inline": False
                     })
 
-            # Add Recent Transactions if available
             if last_3_tx:
                 tx_summary = ""
-                for source, txs in last_3_tx.items():
-                    if txs:
-                        tx_summary += f"**{source.upper()} Transactions**\n"
-                        for tx in txs:
-                            tx_summary += f"• {tx}\n"
-                        tx_summary += "\n"
+                for tx in last_3_tx:
+                    tx_summary += f"• {tx}\n"
                 if tx_summary:
                     embed["fields"].append({
                         "name": "🔄 Recent Transactions",
@@ -146,7 +162,6 @@ class MultiAlert:
                         "inline": False
                     })
 
-            # Add Links section
             links = (
                 f"🔗 DexScreener: [Chart]({dex_link})\n"
                 f"📱 Photon: [Trade]({photon_link})\n"
@@ -158,12 +173,11 @@ class MultiAlert:
                 links += f"🐦 Twitter: [Follow]({twitter})\n"
             
             embed["fields"].append({
-                "name": "",
+                "name": "Links",
                 "value": links,
                 "inline": False
             })
 
-            # Create webhook data
             data = {
                 "username": "Multi Alert Bot",
                 "embeds": [embed]

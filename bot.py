@@ -19,6 +19,7 @@ from topholders import HolderAmount
 from walletpnl import WAlletPNL
 from compositescore import CompositeScore
 from marketcap import MarketcapFetcher
+from bdmetadata import BuySellTradeUniqueData, Tokenomics
 from webhooks import AlefAlertWebhook, MultiAlert, ScoreReportWebhook
 
 intents = discord.Intents.all()
@@ -46,6 +47,9 @@ class ScrapeAD:
         self.score = CompositeScore()
         self.score_webhook_usage = ScoreReportWebhook()
         self.backup_mc = MarketcapFetcher()
+        self.bd_trade_data = BuySellTradeUniqueData()
+        self.bd_tokenomic_data = Tokenomics()
+        
         #webhooks
         self.multi_alert_webhook = ""
         
@@ -57,14 +61,13 @@ class ScrapeAD:
         self.ca_appearences = {}
         self.ca_trading_links = {}
 
-
         self.swt_message_data = {} 
         self.fresh_message_data = {}
         self.degen_message_data = {}
         self.ca_server_counts = {}
 
 
-        #ca sets
+        #ca sets & channel ids
         self.high_freq_cas = set()
         self.legend_cas = set()
         self.kol_alpha_cas = set()
@@ -77,7 +80,6 @@ class ScrapeAD:
         self.fresh_cas = set()
         self.fresh_5sol_1m_mc_cas = set()
         self.fresh_1h_cas = set()
-
         self.swt_channel_ids = {
             1273250694257705070: "Whale",
             1280465862163304468: "Smart",
@@ -94,6 +96,7 @@ class ScrapeAD:
             1281677424005746698: "Fresh 1h",
         }
         self.degen_channel_id = 1278278627997384704
+
 
     async def initialize(self):
         await self.bot.wait_until_ready()
@@ -364,7 +367,7 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "Bfh9xqBySk78yiEGAxTPtz6bwmfVnsQkTRLwBwF4pump"
+            test_ca = "9V4xdNb7n7zmkXZDAiYrm7a48QVrqCrgjE1LUxjQpump"
             if ca == test_ca:
                 multialert_found = True
             """
@@ -382,28 +385,98 @@ class ScrapeAD:
                 self.multi_alerted_cas.add(ca)
                 print(f"\nMUlTI ALERT FOUND\n{"*" * 50}")
 
-                
+                try:
                 #dex calls & processes:
-                dex_data = await self.dex.fetch_token_data_from_dex(session, ca)
-                if not dex_data:
-                    return
-                token_name = dex_data['token_name']
-                backup_mc = await self.backup_mc.calculate_marketcap(ca)
-                marketcap = dex_data['token_mc'] if dex_data['token_mc'] else backup_mc
-                m5_vol = dex_data['token_5m_vol']
-                liquidity = dex_data['token_liquidity']
-                token_created_at = dex_data['token_created_at']
-                pool_address = dex_data['pool_address']
-                print(f"MC: {marketcap}")
-                print(f"Liquidity: {liquidity}")
-                print(f"5m Vol: {m5_vol}")
-                print(f"Pool Addres: {pool_address}")
+                    dex_data = await self.dex.fetch_token_data_from_dex(session, ca) or {}
+                except Exception as e:
+                    print(str(e))
+                try:
+                    backup_bd_data = await self.bd_tokenomic_data.process(ca) or {}
+                except Exception as e:
+                    print(str(e))
+                try:
+                    unique_bd_data = await self.bd_trade_data.process(ca) or {}
+                except Exception as e:
+                    print(str(e))
 
-                telegram = dex_data['socials'].get('telegram', {}) or None
-                twitter = dex_data['socials'].get('twitter', {}) or None
-                dex_url = dex_data['dex_url']
-                print(f"TG: {telegram}")
-                print(f"X: {twitter}")
+                try:
+                    token_name = dex_data.get('token_name') or backup_bd_data.get('name', 'Unknown Name')
+                    backup_mc = await self.backup_mc.calculate_marketcap(ca)
+                    marketcap = backup_bd_data.get('marketcap', backup_mc)
+                    m5_vol = dex_data.get('token_5m_vol', 0)
+                    if backup_bd_data:
+                        m30_vol = backup_bd_data.get('30_min_vol', 0)
+                        m30_vol_change = backup_bd_data.get('30_min_vol_percent_change', 0)
+                        print(f"30m VOL: {m30_vol} || {m30_vol_change} % Change in vol")
+                    liquidity = dex_data.get('token_liquidiry', 0) or backup_bd_data.get('liquidity', 0)
+                    print(f"Liquidity: {liquidity}")
+                    token_created_at = dex_data.get('token_created_at', 0)
+                    pool_address = dex_data.get('pool_address', 0)
+                    print(f"MC: {marketcap}")
+                    print(f"Liquidity: {liquidity}")
+                    print(f"5m Vol: {m5_vol}")
+                    print(f"Pool Addres: {pool_address}")
+                except Exception as e:
+                    print(str(e))
+
+                try:
+                    if dex_data and 'socials' in dex_data:
+                        telegram = dex_data['socials'].get('telegram')
+                        twitter = dex_data['socials'].get('twitter')
+                    if not telegram and backup_bd_data:
+                        telegram = backup_bd_data.get('telegram')
+                    if not twitter and backup_bd_data:
+                        twitter = backup_bd_data.get('twitter')
+                except Exception as e:
+                    print(f"Error processing social data: {e}")
+                
+                # In the check_multialert function, replace this section:
+                try:
+                    if unique_bd_data:
+                        # unique wallet data 
+                        new_unique_wallet_count_30m = unique_bd_data.get('new_unique_wallets_30_min_count', 0)
+                        print(f"New Unique wallets last 30m: {new_unique_wallet_count_30m}")
+
+                        new_unique_wallet_percent_change_30m = unique_bd_data.get('new_unique_wallets_30_min_percent_change', 0)
+                        print(f"Percentage change in unique wallets last 30m: {new_unique_wallet_percent_change_30m}%")
+
+                        new_unique_wallet_count_1h = unique_bd_data.get('new_unique_wallets_1h_count', 0)
+                        print(f"New Unique wallets last 1h: {new_unique_wallet_count_1h}")
+
+                        new_unique_wallet_percent_change_1h = unique_bd_data.get('new_unique_wallets_1h_percent_change', 0)
+                        print(f"Percentage change in unique wallets last 1h: {new_unique_wallet_percent_change_1h}%")
+
+                        # general buy sell data 
+                        trade_percent_change_30m = unique_bd_data.get('trade_30_min_percent_change', 0)
+                        print(f"Trade percentage change last 30m: {trade_percent_change_30m}%")
+
+                        buy_percent_change_30m = unique_bd_data.get('buy_30_min_percent_change', 0)
+                        print(f"Buy percentage change last 30m: {buy_percent_change_30m}%")
+
+                        sell_percent_change_30m = unique_bd_data.get('sell_30_min_percent_change', 0)
+                        print(f"Sell percentage change last 30m: {sell_percent_change_30m}%")
+
+                        holder_count = unique_bd_data.get('holders', 0)
+                    else:
+                        new_unique_wallet_count_30m = 0
+                        new_unique_wallet_percent_change_30m = 0
+                        new_unique_wallet_count_1h = 0
+                        new_unique_wallet_percent_change_1h = 0
+                        trade_percent_change_30m = 0
+                        buy_percent_change_30m = 0
+                        sell_percent_change_30m = 0
+                        holder_count = 0
+                except Exception as e:
+                    print(f"Error processing birdeye data: {e}")
+                    new_unique_wallet_count_30m = 0
+                    new_unique_wallet_percent_change_30m = 0
+                    new_unique_wallet_count_1h = 0
+                    new_unique_wallet_percent_change_1h = 0
+                    trade_percent_change_30m = 0
+                    buy_percent_change_30m = 0
+                    sell_percent_change_30m = 0
+                    holder_count = 0
+
 
                                 
                 #get servercount & buy/sell data
@@ -466,43 +539,46 @@ class ScrapeAD:
                 print(last_degen)
 
                 #call tg evaluation
-                soul_data = await self.soul_scanner_bot.send_and_receive_message(ca)
-                if not soul_data:
-                    return
-                
-                holder_count = soul_data['holder_count']
-                #top_hold = soul_data['top_percentage']
-                dev_holding = soul_data['dev_holding']
+                try:
+                    soul_data = await self.soul_scanner_bot.send_and_receive_message(ca)
+                    if soul_data:
+                        holder_count = unique_bd_data['holders']
+                        #top_hold = soul_data['top_percentage']
+                        dev_holding = soul_data['dev_holding']
 
-                tg_metrics = {
-                    'token_migrated': False,
-                    'holding_percentage': None,
-                    'holder_count': holder_count,
-                    #'top_holding_percentage': top_hold,
-                    'dev_holding_percentage': dev_holding
-                }
+                        tg_metrics = {
+                            'token_migrated': False,
+                            'holding_percentage': None,
+                            'holder_count': holder_count,
+                            #'top_holding_percentage': top_hold,
+                            'dev_holding_percentage': dev_holding
+                        }
                 
-                if soul_data['passes']:
-                    print(f"\nSOUL SCANNER TEST PASSED FOR: {ca}\nRunning bundle bot check")
-                bundle_data = await self.bundle_bot.send_and_receive_message(ca)
-                if bundle_data:
-                    passes = bundle_data['passes']
-                    if passes:
-                        await self.rickbot_webhook.full_send_ca_to_alefdao(ca)
-                        await self.slime_alert.send_message(ca)
-                        print(f"\nBundle bot ALSO PASSED FOR: {ca}")
-                        """
-                        tg_metrics['holding_percentage'] = ['holding_percentage']
-                        if bundle_data['token_bonded']:
-                            if isinstance(bundle_data['token_bonded'], bool):
-                                tg_metrics['token_migrated'] = bundle_data['token_bonded']
-                                print(f"Token Migrated")
+                        if soul_data['passes']:
+                            print(f"\nSOUL SCANNER TEST PASSED FOR: {ca}\nRunning bundle bot check")
+                except Exception as e:
+                    print(f"Error during soul scanner: {str(e)}")
+                try:
+                    bundle_data = await self.bundle_bot.send_and_receive_message(ca)
+                    if bundle_data and bundle_data['passes']:
+                            #await self.rickbot_webhook.full_send_ca_to_alefdao(ca)
+                            #await self.slime_alert.send_message(ca)
+                            print(f"\nBundle bot ALSO PASSED FOR: {ca}")
+                            """
+                            tg_metrics['holding_percentage'] = ['holding_percentage']
+                            if bundle_data['token_bonded']:
+                                if isinstance(bundle_data['token_bonded'], bool):
+                                    tg_metrics['token_migrated'] = bundle_data['token_bonded']
+                                    print(f"Token Migrated")
+                                else:
+                                    print(F"Token On Pump")
                             else:
-                                print(F"Token On Pump")
-                        else:
-                            await self.rickbot_webhooks.conditional_send_ca_to_alefdao(ca)
-                            await self.slime_alert.send_message(ca)
-                        """
+                                await self.rickbot_webhooks.conditional_send_ca_to_alefdao(ca)
+                                await self.slime_alert.send_message(ca)
+                            """
+                except Exception as e:
+                    print(f"Bundle Bot Error: {str(e)}")
+
                 print(f"Holder Count: {tg_metrics['holder_count']}")
                 #print(f"Top Holders hold total of: {tg_metrics['top_holding_percentage']} %")
                 print(f"Dev holds: {tg_metrics['dev_holding_percentage']} %" )
@@ -544,7 +620,7 @@ class ScrapeAD:
 
                             #check criteria to run top wallet pnl analysis
                             #test: 
-                            if holders_over_5 <= 5:
+                            if holders_over_5 == 99:
                             #iREAL: f holders_over_5 <= 2 and age_value != 'days' and soul_data['passes']:
                                 holder_criteria = True
                                 if holder_criteria:
@@ -578,11 +654,23 @@ class ScrapeAD:
                                                 print("-" * 30)
                                                 wallets_processed += 1
                                                 """
-                last_3_transactions = {
-                    'swt': swt_data['latest_descriptions'][-1:] if swt_data else [],
-                    'degen': degen_data['latest_descriptions'][-1:] if degen_data else [],
-                    'fresh': fresh_data['latest_descriptions'][-1:] if fresh_data else []
-                }
+                all_transactions = []
+
+                # Add transactions from each source
+                if swt_data and swt_data['latest_descriptions']:
+                    all_transactions.extend(swt_data['latest_descriptions'][-1:])
+                if degen_data and degen_data['latest_descriptions']:
+                    all_transactions.extend(degen_data['latest_descriptions'][-1:])
+                if fresh_data and fresh_data['latest_descriptions']:
+                    all_transactions.extend(fresh_data['latest_descriptions'][-1:])
+
+                # Format for webhook
+                if all_transactions:
+                    tx_summary = "\n".join([f"• {tx}" for tx in all_transactions])
+                else:
+                    tx_summary = "No recent transactions"
+
+
                 channel_metrics = {
 
                     'swt': {
@@ -605,6 +693,29 @@ class ScrapeAD:
                     }
                 }
 
+                #list channels the ca was detected in
+                channels_ca_found_in = {}
+
+                for channel_name, data in swt_data['channels'].items():
+                    if data['buys'] > 0:
+                        channels_ca_found_in[channel_name] = data['buys']
+                if degen_data['channels']['Degen']['buys'] > 0:
+                    channels_ca_found_in[channel_name] = data['buys']
+                for channel_name, data in fresh_data['channels'].items():
+                    if data['buys'] > 0:
+                        channels_ca_found_in[channel_name] = data['buys']
+
+                channel_text = "No active channels yet" if not channels_ca_found_in else "\n".join([f"• {channel} ({amount:.2f}sol)" for channel, amount in channels_ca_found_in.items() if amount > 0])                
+
+
+
+
+
+
+
+
+
+                """
                 score_data = await self.score.calculate_score(
                     token_age=token_age,
                     telegram=telegram,
@@ -623,11 +734,20 @@ class ScrapeAD:
                     server_sells=total_swt_sells + total_fresh_sells,
                     server_count=total_swt_count + total_fresh_count,
                     wallet_data=wallet_analysis if holder_criteria else None,
-                    channel_metrics=channel_metrics
+                    channel_metrics=channel_metrics,
+                    m30_vol=m30_vol,
+                    m30_vol_change=m3_vol_change,
+                    new_unique_wallets_30m=new_unique_wallet_count_30m,
+                    new_unique_wallet_30m_change=new_unique_wallet_percent_change_30m,
+                    new_unique_wallet_1h=new_unique_wallet_count_1h,
+                    new_unique_wallet_1h_change=new_unique_wallet_percent_change_1h,
+                    trade_change_30m=trade_percent_change_30,
+                    buy_change_30m=buy_percent_change_30m,
+                    sell_change_30m=sell_percent_change_30m
                 )
                 if score_data:
                     await self.score_webhook_usage.send_score_report(ca, token_name, score_data)
-
+                """
 
                 await self.ma_webhooks.multialert_webhook(
                     token_name=token_name,
@@ -646,7 +766,7 @@ class ScrapeAD:
                     fresh_count=total_fresh_count,
                     fresh_buys=total_fresh_buys,
                     fresh_sells=total_fresh_sells,
-                    last_3_tx=last_3_transactions,
+                    last_3_tx=all_transactions,
                     holder_count=holder_count,
                     dev_holding_percentage=dev_holding,
                     token_migrated=tg_metrics['token_migrated'],
@@ -656,8 +776,15 @@ class ScrapeAD:
                     token_age=token_age,
                     top_10_holding_percentage=total_held,
                     holders_over_5=holders_over_5,
-                    wallet_data=wallet_analysis if holder_criteria else None
-
+                    wallet_data=wallet_analysis if holder_criteria else None,
+                    m30_vol=m30_vol,
+                    m30_vol_change=m30_vol_change,
+                    new_unique_wallets_30m=new_unique_wallet_count_30m,
+                    new_unique_wallet_30m_change=new_unique_wallet_percent_change_30m,
+                    trade_change_30m=trade_percent_change_30m,
+                    buy_change_30m=buy_percent_change_30m,
+                    sell_change_30m=sell_percent_change_30m,
+                    channel_text=channel_text
                 )
 
 
@@ -702,7 +829,7 @@ class Main:
             # Create all tasks including bot startup
             tasks = [
                 bot.start(DISCORD_BOT_TOKEN),
-                self.ad_scraper.check_multialert(session, "test_name", 'Bfh9xqBySk78yiEGAxTPtz6bwmfVnsQkTRLwBwF4pump', "test_channel")
+                self.ad_scraper.check_multialert(session, "test_name", '9V4xdNb7n7zmkXZDAiYrm7a48QVrqCrgjE1LUxjQpump', "test_channel")
             ]
             
             try:

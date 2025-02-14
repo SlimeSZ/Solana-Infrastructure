@@ -132,7 +132,6 @@ class BundleBot:
                 
             if "There was a server error" in message.message:
                 #print(f"Bundle bot down but soul scanner criteria met for: {ca}")
-                await self.conditional_send_ca_to_alefdao(ca)
                 return None
                 
             lines = message.message.split('\n')
