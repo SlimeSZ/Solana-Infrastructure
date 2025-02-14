@@ -30,64 +30,58 @@ class SoulScannerBot:
                 return False
                 
             lines = message.message.split('\n')
-            #print("\nProcessing Soul Scanner Response:")
-            #print("-" * 50)
             
             try:
-                # Scans
-                scans_line = next((line for line in lines if "⚡ Scans:" in line), None)
-                if not scans_line:
-                    print("❌ Could not find Scans line")
-                    return False
-                scans = int(scans_line.split("Scans: ")[1].split(" |")[0])
-                #print(f"✅ Scans: {scans}")
-                
-                # Fresh wallets
-                fresh_line = next((line for line in lines if "First 20:" in line), None)
-                if not fresh_line:
-                    print("❌ Could not find Fresh wallets line")
-                    return False
-                fresh = int(fresh_line.split("First 20: ")[1].split(" Fresh")[0])
-                #print(f"✅ Fresh Wallets: {fresh}")
-                
-                # Snipers
-                sniper_line = next((line for line in lines if "Snipers:" in line), None)
-                if not sniper_line:
-                    print("❌ Could not find Snipers line")
-                    return False
-                sniper_percent = float(sniper_line.split("•")[1].strip().split(" ")[0].replace('%', ''))
-                #print(f"✅ Sniper Percentage: {sniper_percent}%")
+                # Initialize default values
+                scans = 0
+                fresh = 0
+                sniper_percent = 0
+                holder_count = 0
+                top_percentage = 0
+                dev_percentage = 0
 
-                # Holders
+                # Scans - Optional
+                scans_line = next((line for line in lines if "⚡ Scans:" in line), None)
+                if scans_line:
+                    scans = int(scans_line.split("Scans: ")[1].split(" |")[0])
+                
+                # Fresh wallets - Optional
+                fresh_line = next((line for line in lines if "First 20:" in line), None)
+                if fresh_line:
+                    fresh = int(fresh_line.split("First 20: ")[1].split(" Fresh")[0])
+                
+                # Snipers - Optional
+                sniper_line = next((line for line in lines if "Snipers:" in line), None)
+                if sniper_line:
+                    try:
+                        sniper_percent = float(sniper_line.split("•")[1].strip().split(" ")[0].replace('%', ''))
+                    except:
+                        sniper_percent = 0
+
+                # Holders - Required
                 hold_line = next((line for line in lines if "Hodls:" in line), None)
                 if not hold_line:
-                    #print("❌ Could not find Holders line")
                     return False
                 holder_count = int(hold_line.split("Hodls: ")[1].split(" •")[0].replace(',', ''))
                 top_percentage = float(hold_line.split("Top: ")[1].split("%")[0])
-                #print(f"✅ Holder Count: {holder_count}")
-                #print(f"✅ Top Holder Percentage: {top_percentage}%")
 
-                # Dev holdings
-                # Dev holdings - Fix the emoji check
-                # Dev holdings - Update parser for the new format
+                # Dev holdings - Required
                 dev_line = next((line for line in lines if "🛠️ Dev:" in line), None)
                 if not dev_line:
-                    #print("❌ Could not find Dev Holdings line")
                     return False
                 try:
-                    # Parse the new format: "🛠️ Dev: 3 SOL | 62% $PLUS500"
                     dev_percentage = float(dev_line.split("%")[0].split("|")[1].strip())
-                    #print(f"✅ Dev Holdings: {dev_percentage}%")
-                except Exception as e:
-                    #print(f"❌ Error parsing dev percentage: {e}")
-                    #print(f"Dev line found: {dev_line}")
-                    return False
+                except:
+                    dev_percentage = 0
             
-                passes = scans >= 50 and fresh <= 5 and sniper_percent < 50
-                #print("\nAnalysis Results:")
-                #print(f"Criteria Check: {'PASSED' if passes else 'FAILED'}")
-                #print("-" * 50)
+                # Determine if passes based on available data
+                passes = True
+                if scans_line:  # Only check scans if we have the data
+                    passes = passes and scans >= 50
+                if fresh_line:  # Only check fresh if we have the data
+                    passes = passes and fresh <= 5
+                if sniper_line:  # Only check snipers if we have the data
+                    passes = passes and sniper_percent < 50
 
                 if return_holder_metrics:
                     return {
@@ -99,13 +93,20 @@ class SoulScannerBot:
                     }
             
             except Exception as e:
-                #print(f"\n❌ Error parsing Soul Scanner response: {str(e)}")
-                #print("Raw message received:")
-                #print(message.message)
+                print(f"Warning: Some data could not be parsed from Soul Scanner response: {str(e)}")
+                # Return partial data if we have the essential metrics
+                if holder_count and dev_percentage:
+                    return {
+                        'passes': True,  # Default to True if we can't check all criteria
+                        'holder_count': holder_count,
+                        'top_percentage': top_percentage,
+                        'dev_holding': dev_percentage,
+                        'scans': scans
+                    }
                 return False
             
         except Exception as e:
-            print(f"\n❌ Error processing SoulScanner: {e}")
+            print(f"Error processing SoulScanner: {e}")
             return False
 
 class BundleBot:
