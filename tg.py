@@ -189,47 +189,6 @@ class BundleBot:
 class WalletPNL:
     def __init__(self):
         pass
-
-    async def send_and_recieve_message_wallet_pnl(self, wallet_address: str):
-        await client.start()
-        command = f"/w {wallet_address}"
-        await client.send_message('RickBurpBot', command)
-        await asyncio.sleep(3)
-
-        messages = await client.get_messages('RickBurpBot', limit=1)
-        if not messages:
-            return None
-        
-        return await self.process_wpnl_message(messages[0], wallet_address)
-
-    async def process_wpnl_message(self, message, wallet_address: str):
-        try:
-            if not message.message:
-                return None
-                
-            lines = message.message.split('\n')
-            result = {}
-            
-            for line in lines:
-                # Extract 7D performance
-                if "📉 7D:" in line or "📈 7D:" in line:
-                    # Extract percentage
-                    percentage = float(line.split('%')[0].split(':')[1].strip())
-                    # Extract amount
-                    amount_str = line.split('[')[1].split(']')[0].strip()
-                    # Convert K/M to actual numbers
-                    amount = amount_str.replace('K', '000').replace('M', '000000')
-                    amount = float(amount.replace('-', '')) * (-1 if '-' in amount_str else 1)
-                    
-                    result['seven_day_percentage'] = percentage
-                    result['seven_day_amount'] = amount
-            return result
-                    
-        except Exception as e:
-            print(f"Error processing wallet data: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return None
         
     async def send_and_recieve_message_dex_paid(self, ca: str):
         await client.start()

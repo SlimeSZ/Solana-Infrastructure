@@ -2,11 +2,11 @@
 import asyncio
 import aiohttp
 from env import ALEF_ALERT_WEBHOOK
-from alefalerts import MessageSender  # Remove the () from import
+from alefalerts import MessageSender 
 
 class AlefAlertWebhook:
     def __init__(self):
-        self.message_sender = MessageSender()  # Initialize here instead
+        self.message_sender = MessageSender() 
 
     async def full_send_ca_to_alefdao(self, ca: str):
         try:

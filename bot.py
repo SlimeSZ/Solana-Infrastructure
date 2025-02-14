@@ -15,6 +15,8 @@ from dexapi import DexScreenerAPI
 from tg import SoulScannerBot, BundleBot, WalletPNL
 from tokenage import TokenAge
 from alefalerts import MessageSender
+from topholders import HolderAmount
+from walletpnl import WAlletPNL
 from webhooks import AlefAlertWebhook
 
 intents = discord.Intents.all()
@@ -32,11 +34,12 @@ class ScrapeAD:
         self.dex = DexScreenerAPI()
         self.soul_scanner_bot = SoulScannerBot()
         self.bundle_bot = BundleBot()
-        self.wallet_pnl = WalletPNL()
+        self.wallet_pnl = WAlletPNL()
+        self.wallet_pnl_tg = WalletPNL()
         self.token_age = TokenAge()
         self.slime_alert = MessageSender()
-        self.rickbot_webhooks = AlefAlertWebhook()
-        
+        self.rickbot_webhook = AlefAlertWebhook()        
+        self.get_top_holders = HolderAmount()
         
         #webhooks
         self.multi_alert_webhook = ""
@@ -356,7 +359,7 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "6JF9moXcrBbkd7rbm398x5yUht8r58zyf7o4ZPLWpump"
+            test_ca = "CM2wyfYGFmaFfzxQDvWfvG7ViHpx19GAVcUi72ppump"
             if ca == test_ca:
                 multialert_found = True
             """
@@ -460,14 +463,14 @@ class ScrapeAD:
                     return
                 
                 holder_count = soul_data['holder_count']
-                top_hold = soul_data['top_percentage']
+                #top_hold = soul_data['top_percentage']
                 dev_holding = soul_data['dev_holding']
 
                 tg_metrics = {
                     'token_migrated': False,
                     'holding_percentage': None,
                     'holder_count': holder_count,
-                    'top_holding_percentage': top_hold,
+                    #'top_holding_percentage': top_hold,
                     'dev_holding_percentage': dev_holding
                 }
                 
@@ -480,28 +483,29 @@ class ScrapeAD:
                             await self.rickbot_webhooks.full_send_ca_to_alefdao(ca)
                             await self.slime_alert.send_message(ca)
                             print(f"\nBundle bot ALSO PASSED FOR: {ca}")
+                        """
                         tg_metrics['holding_percentage'] = bundle_data['holding_percentage']
                         if bundle_data['token_bonded']:
                             if isinstance(bundle_data['token_bonded'], bool):
                                 tg_metrics['token_migrated'] = bundle_data['token_bonded']
+                                print(f"Token Migrated")
                             else:
                                 print(F"Token On Pump")
                         else:
                             await self.rickbot_webhooks.conditional_send_ca_to_alefdao(ca)
                             await self.slime_alert.send_message(ca)
-                print(f"Token Migrated? {tg_metrics['token_migrated']}")
+                        """
                 print(f"Holder Count: {tg_metrics['holder_count']}")
-                print(f"Top Holders hold total of: {tg_metrics['top_holding_percentage']} %")
+                #print(f"Top Holders hold total of: {tg_metrics['top_holding_percentage']} %")
                 print(f"Dev holds: {tg_metrics['dev_holding_percentage']} %" )
 
                 #dex paid check
-                dex_paid = await self.wallet_pnl.send_and_recieve_message_dex_paid(ca)
-                if not dex_paid:
-                    return
+                dex_paid = await self.wallet_pnl_tg.send_and_recieve_message_dex_paid(ca)
+                print(f"Dex Paid? {dex_paid}")
                 
                 #get dex chat .png
                 """
-                dex_chart_data = await self.wallet_pnl.send_and_recieve_dex_chart(ca)
+                dex_chart_data = await self.wallet_pnl_tg.send_and_recieve_dex_chart(ca)
                 if dex_chart_data:
                     chart_image = dex_chart_data['image_data']
                 """
@@ -510,11 +514,52 @@ class ScrapeAD:
                 token_age = await self.token_age.process_pair_age(ca)
                 if not token_age:
                     return
-                
                 age_value = token_age['value']
                 age_unit = token_age['unit']
                 age = f"{age_value} {age_unit}"
                 print(age)
+
+                #get holder data
+                holder_criteria = False
+                holder_data = await self.get_top_holders.calculate_holder_value(ca)
+                if holder_data:
+                    holder_values, holder_evaluation = holder_data  # Unpack the tuple
+                    if holder_values:  # Check if holder_values exists
+                        metadata = holder_values.get('metadata', {})
+                        if metadata:
+                            holders_over_5 = metadata.get('holders_over_5_percent', 0)
+                            total_held = metadata.get('total_percentage_held', 0)
+                            print(f"\nHolder Analysis:")
+                            print(f"Top 10 Wallets hold total of {total_held}%")
+                            if holders_over_5:
+                                print(f"Warning: {holders_over_5} Holders w/ over 5%")
+
+                            #check criteria to run top wallet pnl analysis
+                            if holders_over_5 < 1 and age_value != 'days' and soul_data['passes']:
+                                holder_criteria = True
+                                #Tonly then run below analysis
+                                print("\nTop Wallet Performance Analysis:")
+                                print("-" * 50)
+                                # Process top 4 wallets excluding metadata
+                                wallets_processed = 0
+                                for wallet_address, wallet_info in holder_values.items():
+                                    if wallet_address != 'metadata' and wallets_processed < 4:
+                                        wallet_pnl = await self.wallet_pnl.calculate_pnl(wallet_address)
+                                        if wallet_pnl:
+                                            print(f"\nWallet {wallet_address[:8]}...")
+                                            print(f"Holding: {wallet_info['percentage']}%")
+                                            print(f"Last 100 TX PNL: {wallet_pnl['last_100_tx_pnl']:.4f} SOL")
+                                            print(f"Tokens Traded: {wallet_pnl['tokens_traded']}")
+                                            print(f"Wins/Losses: {wallet_pnl['trades_won']}/{wallet_pnl['trades_loss']}")
+                                            print(f"Average Sol entry: {wallet_pnl['average_entry_per_trade']}")
+                                            print("-" * 30)
+                                            wallets_processed += 1
+                
+                #criteria for Twitter Analysis Component (LATER JUDGE VIA COMPOSITE SCORE FUNCTIONALITY)
+                #if twitter and holder_criteria and dex_paid and dev_holding < 2 and :
+
+
+                        
         
         except Exception as e:
             print(f"Error in running check for multialert: {str(e)}")
@@ -551,7 +596,7 @@ class Main:
             # Create all tasks including bot startup
             tasks = [
                 bot.start(DISCORD_BOT_TOKEN),
-                self.ad_scraper.check_multialert(session, "test_name", 'test_ca', "test_channel")
+                self.ad_scraper.check_multialert(session, "test_name", 'CM2wyfYGFmaFfzxQDvWfvG7ViHpx19GAVcUi72ppump', "test_channel")
             ]
             
             try:
