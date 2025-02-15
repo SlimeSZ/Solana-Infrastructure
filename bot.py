@@ -17,8 +17,7 @@ from tokenage import TokenAge
 from alefalerts import MessageSender
 from topholders import HolderAmount
 from walletpnl import WAlletPNL
-from compositescore import CompositeScore
-from scoring import HolderScore, TokenomicScore, TrustScore
+from scoring import HolderScore, TokenomicScore, TrustScore, PenalizeScore
 from marketcap import MarketcapFetcher
 from bdmetadata import BuySellTradeUniqueData, Tokenomics
 from twoxmonitor import TwoXChecker
@@ -46,11 +45,11 @@ class ScrapeAD:
         self.rickbot_webhook = AlefAlertWebhook()  
         self.ma_webhooks = MultiAlert()      
         self.get_top_holders = HolderAmount()
-        self.score = CompositeScore()
-        
+        #scoring imports
         self.holderscore = HolderScore()
         self.tokenomicscore = TokenomicScore()
         self.trustscore = TrustScore()
+        self.penalizescore = PenalizeScore()
 
         
         self.score_webhook_usage = ScoreReportWebhook()
@@ -420,7 +419,7 @@ class ScrapeAD:
                     token_name = dex_data.get('token_name') or backup_bd_data.get('name', 'Unknown Name')
                     backup_mc = await self.backup_mc.calculate_marketcap(ca)
                     marketcap = backup_bd_data.get('marketcap', backup_mc)
-                    #m5_vol = dex_data.get('token_5m_vol', 0)
+                    m5_vol = dex_data.get('token_5m_vol', 0)
                     if backup_bd_data:
                         m30_vol = backup_bd_data.get('30_min_vol', 0)
                         m30_vol_change = backup_bd_data.get('30_min_vol_percent_change', 0)
@@ -726,7 +725,29 @@ class ScrapeAD:
 
                 channel_text = "No active channels yet" if not channels_ca_found_in else "\n".join([f"• {channel} ({amount:.2f}sol)" for channel, amount in channels_ca_found_in.items() if amount > 0])                
 
-            
+                #----------------------------------------------------------------------------------
+
+                holder_score = await self.holderscore.calculate_score(
+                    token_age, holder_count, total_held, holders_over_5, dev_holding,
+                    sniper_percent, wallet_analysis if wallet_analysis else None
+                )
+                tokenomic_score = await self.tokenomicscore.calculate_tokenomic_score(
+                    token_age, marketcap, m30_vol, m30_vol_change, liquidity,
+                    trade_percent_change_30m, buy_percent_change_30m, sell_percent_change_30m,
+                    new_unique_wallet_count_30m, new_unique_wallet_count_1h, new_unique_wallet_percent_change_30m, new_unique_wallet_percent_change_1h,
+                    holder_count, m5_vol
+                )
+                total_server_buys = total_fresh_buys + total_swt_buys
+                total_server_sells = total_fresh_sells + total_swt_sells
+                total_server_count = total_swt_count + total_fresh_count
+                trust_score = await self.trustscore.calculate_trust_score(
+                    token_age, total_server_buys, total_server_sells, total_server_count,
+                    telegram, twitter, dex_paid, soul_data['passes'], bundle_data['passes'],
+                    buy_percent_change_30m, sell_percent_change_30m
+                )
+
+                composite_score = holder_score + tokenomic_score['total_score_before_penalties']
+                            
 
 
 
@@ -735,36 +756,6 @@ class ScrapeAD:
 
 
                 """
-                score_data = await self.score.calculate_score(
-                    token_age=token_age,
-                    telegram=telegram,
-                    twitter=twitter,
-                    holder_count=holder_count,
-                    dex_paid=dex_paid,
-                    top_10_holding_percentage=total_held,
-                    holders_over_5_percent=holders_over_5,
-                    dev_holding_percentage=dev_holding,
-                    soul_scanner_pass=soul_data['passes'],
-                    bundle_bot_pass=bundle_data['passes'] if bundle_data else False,
-                    marketcap=marketcap,
-                    #m5_vol=m5_vol,
-                    liquidity=liquidity,
-                    server_buys=total_swt_buys + total_fresh_buys,
-                    server_sells=total_swt_sells + total_fresh_sells,
-                    server_count=total_swt_count + total_fresh_count,
-                    wallet_data=wallet_analysis if holder_criteria else None,
-                    channel_metrics=channel_metrics,
-                    m30_vol=m30_vol,
-                    m30_vol_change=m3_vol_change,
-                    new_unique_wallets_30m=new_unique_wallet_count_30m,
-                    new_unique_wallet_30m_change=new_unique_wallet_percent_change_30m,
-                    new_unique_wallet_1h=new_unique_wallet_count_1h,
-                    new_unique_wallet_1h_change=new_unique_wallet_percent_change_1h,
-                    trade_change_30m=trade_percent_change_30,
-                    buy_change_30m=buy_percent_change_30m,
-                    sell_change_30m=sell_percent_change_30m,
-                    sniper_percent=sniper_percent
-                )
                 if score_data:
                     await self.score_webhook_usage.send_score_report(ca, token_name, score_data)
                 """

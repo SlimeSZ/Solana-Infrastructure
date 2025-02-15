@@ -39,11 +39,6 @@ class ServerData:
         }
         
         self.degen_channel_id = 1278278627997384704
-        self.fresh_channel_ids = [
-            1281675800260640881,  # fresh
-            1281676746202026004,  # 5sol1m mc
-            1281677424005746698   # fresh 1h
-        ]
         
         self.fresh_channel_names = {
             1281675800260640881: "Fresh",

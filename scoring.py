@@ -182,9 +182,11 @@ class TokenomicScore:  # 40% of total score
     def __init__(self):
         self.MAX_SCORE = 40.0
         self.VOLUME_LIQUIDITY_MAX = 8.0
-        self.TOKEN_VOLUME_MAX = 10.0
-        self.BUY_TRADE_MAX = 8.0
-        self.BUYING_PRESSURE_MAX = 8.0
+        self.TOKEN_VOLUME_MAX = 4.0
+        self.TOKEN_M5_MAX = 6.0
+        self.BUY_TRADE_MAX = 6.0
+        self.BUYING_PRESSURE_MAX = 6.0
+        self.SERVER_WALLET_CLUSTER_MAX = 4.0
         self.WALLET_GROWTH_MAX = 6.0
         self.age_conv = TokenAgeConvert()
 
@@ -202,13 +204,15 @@ class TokenomicScore:  # 40% of total score
         total_unique_wallets_1h,
         unique_wallet_change_30m,
         unique_wallet_change_1h,
-        holder_count
+        holder_count,
+        m5_vol
     ):
         try:
             age_in_minutes = self.age_conv.convert_token_age_to_minutes(token_age)
             scores = {
                 'volume_marketcap_liquidity_confluence': await self.evaluate_volume_liquidity(m30_vol, liquidity, marketcap),  
-                'age_volume_confluence': await self.tokenage_volume_confluence(age_in_minutes, m30_vol_change),
+                'm30_age_volume_confluence': await self.tokenage_volume_confluence_30m(age_in_minutes, m30_vol_change),
+                'm5_age_volume_confluence': await self.tokenage_volume_confluence_5m(age_in_minutes, m5_vol),
                 'total_trades_buy_confluence': await self.buy_total_trade_confluence(total_trade_change, buys_change), 
                 'buying_pressure': await self.evaluate_buying_pressure(buys_change, sells_change, holder_count), 
                 'wallet_growth': await self.evaluate_wallet_growth(
@@ -219,7 +223,8 @@ class TokenomicScore:  # 40% of total score
             }
             normalized_scores = {
                 'volume_marketcap_liquidity_confluence': (scores['volume_marketcap_liquidity_confluence'] / 10) * self.VOLUME_LIQUIDITY_MAX,
-                'age_volume_confluence': (scores['age_volume_confluence'] / 10) * self.TOKEN_VOLUME_MAX,
+                'm30_age_volume_confluence': (scores['age_volume_confluence'] / 10) * self.TOKEN_VOLUME_MAX,
+                'm5_age_volume_confluence': (scores['m5_age_volume_confluence'] / 10) * self.TOKEN_M5_MAX,
                 'total_trades_buy_confluence': (scores['total_trades_buy_confluence'] / 10) * self.BUY_TRADE_MAX,
                 'buying_pressure': (scores['buying_pressure'] / 10) * self.BUYING_PRESSURE_MAX,
                 'wallet_growth': (scores['wallet_growth'] / 10) * self.WALLET_GROWTH_MAX
@@ -233,6 +238,117 @@ class TokenomicScore:  # 40% of total score
         except Exception as e:
             print(f"Error in tokenomic score calculation: {str(e)}")
             return 0
+    
+    async def wallet_cluster_evaluation(self, channel_wallet_data: Dict) -> Tuple[float, Dict]:
+        try:
+            score = 0
+            analysis = {}
+            
+            # Initialize channel presence tracking
+            active_channels = set()
+            
+            # Track buy amounts for each channel type
+            channel_buys = {
+                'Kol Alpha': 0,
+                'Kol Regular': 0,
+                'Fresh': 0,
+                'Whale': 0,
+                'Smart': 0,
+                'Legend': 0,
+                'High Freq': 0,
+                'Degen': 0
+            }
+            
+            # Process SWT channels
+            if 'swt' in channel_wallet_data:
+                swt_channels = channel_wallet_data['swt']['channels']
+                for channel_name, data in swt_channels.items():
+                    buys = data.get('buys', 0)
+                    channel_buys[channel_name] = buys
+                    
+                    if buys > 0:
+                        active_channels.add(channel_name)
+                        
+                    # Penalize large KOL buys (potentially bearish)
+                    if channel_name in ['Kol Alpha', 'Kol Regular'] and buys > 9.5:
+                        score -= 5
+                        analysis[f'{channel_name}_penalty'] = -5
+            
+            # Process Fresh channels
+            if 'fresh' in channel_wallet_data:
+                fresh_channels = channel_wallet_data['fresh']['channels']
+                total_fresh_buys = 0
+                for channel_name, data in fresh_channels.items():
+                    buys = data.get('buys', 0)
+                    total_fresh_buys += buys
+                    if buys > 0:
+                        active_channels.add('Fresh')
+                        channel_buys['Fresh'] = total_fresh_buys
+                
+                # Penalty for too many fresh buys
+                if total_fresh_buys > 10:
+                    penalty = (total_fresh_buys - 10) * 0.5
+                    score -= penalty
+                    analysis['fresh_penalty'] = -penalty
+            
+            # Process Degen channel
+            if 'degen' in channel_wallet_data:
+                degen_channels = channel_wallet_data['degen']['channels']
+                if 'Degen' in degen_channels:
+                    buys = degen_channels['Degen'].get('buys', 0)
+                    if buys > 0:
+                        active_channels.add('Degen')
+                        channel_buys['Degen'] = buys
+            
+            # Score channel combinations
+            if len(active_channels) >= 2:
+                combinations = set(map(frozenset, active_channels))
+                
+                # Bearish combinations (Fresh + KOL only)
+                if active_channels == {'Fresh', 'Kol Alpha'} or active_channels == {'Fresh', 'Kol Regular'}:
+                    score -= 8
+                    analysis['bearish_combo_penalty'] = -8
+                
+                # High-scoring combinations
+                elif 'Degen' in active_channels:
+                    if 'Whale' in active_channels:
+                        score += 7
+                        analysis['degen_whale_bonus'] = 7
+                    if 'Smart' in active_channels:
+                        score += 6
+                        analysis['degen_smart_bonus'] = 6
+                    if 'Legend' in active_channels:
+                        score += 8
+                        analysis['degen_legend_bonus'] = 8
+                
+                # Legend combinations
+                if 'Legend' in active_channels:
+                    for other_channel in active_channels - {'Legend', 'Fresh', 'Kol Alpha', 'Kol Regular'}:
+                        score += 5
+                        analysis[f'legend_{other_channel.lower()}_bonus'] = 5
+                
+                # High Freq combinations
+                if 'High Freq' in active_channels:
+                    if {'Degen', 'Smart'} <= active_channels:
+                        score += 6
+                        analysis['high_freq_degen_smart_bonus'] = 6
+                
+                # Bonus for diverse activity (excluding bearish combos)
+                if len(active_channels) >= 3 and not {'Fresh', 'Kol Alpha', 'Kol Regular'} <= active_channels:
+                    diversity_bonus = len(active_channels) * 2
+                    score += diversity_bonus
+                    analysis['diversity_bonus'] = diversity_bonus
+            
+            # Store active channels and their buy amounts in analysis
+            analysis['active_channels'] = list(active_channels)
+            analysis['channel_buys'] = channel_buys
+            analysis['final_score'] = score
+            
+            return score, analysis
+            
+        except Exception as e:
+            print(f"Error in wallet cluster evaluation: {str(e)}")
+            return 0, {'error': str(e)}
 
     async def evaluate_volume_liquidity(self, m30_vol, liquidity, marketcap):
         try:
@@ -274,7 +390,7 @@ class TokenomicScore:  # 40% of total score
             print(f"Error in volume liquidity evaluation: {str(e)}")
             return 0
 
-    async def tokenage_volume_confluence(self, token_age, m30_vol_change):
+    async def tokenage_volume_confluence_30m(self, token_age, m30_vol_change):
         try:
             score = 0
             max_subscore = 10.0
@@ -340,7 +456,61 @@ class TokenomicScore:  # 40% of total score
         except Exception as e:
             print(str(e))
             return 0
-
+        
+    async def tokenage_volume_confluence_5m(self, token_age, m5_vol):
+        try:
+            score = 0
+            max_subscore = 10.0
+            
+            #for fairly new tokens < 30 min
+            if 10000 <= m5_vol <= 20000 and token_age <= 30:
+                score += 2
+            elif 20000 < m5_vol <= 30000 and token_age <= 30:
+                score += 4
+            elif 30000 < m5_vol <= 40000 and token_age <= 30:
+                score += 5
+            elif 40000 < m5_vol <= 60000 and token_age <= 30:
+                score += 7
+            elif 60000 < m5_vol <= 90000 and token_age <= 30:
+                score += 8
+            elif m5_vol > 90000 and token_age <= 30:
+                score += 10
+            #for somewhat new tokens < 60 min
+            elif 20000 < m5_vol <= 30000 and token_age <= 60:
+                score += 2
+            elif 30000 < m5_vol <= 40000 and token_age <= 60:
+                score += 3
+            elif 40000 < m5_vol <= 60000 and token_age <= 60:
+                score += 4
+            elif 60000 < m5_vol <= 90000 and token_age <= 60:
+                score += 6
+            elif m5_vol > 90000 and token_age <= 60:
+                score += 8
+            #for tokens < 2 hrs w high 5m volume
+            elif 30000 < m5_vol <= 40000 and token_age <= 120:
+                score += 2
+            elif 40000 < m5_vol <= 60000 and token_age <= 120:
+                score += 4
+            elif 60000 < m5_vol <= 90000 and token_age <= 120:
+                score += 6
+            elif m5_vol > 90000 and token_age <= 120:
+                score += 7
+            #general 5m checks
+            elif m5_vol > 1000000:
+                score += 10
+            elif m5_vol > 500000:
+                score += 8
+            elif m5_vol > 300000:
+                score += 6.5
+            elif m5_vol > 100000:
+                score += 4
+            elif m5_vol > 50000:
+                score += 3
+            
+            return min(score, max_subscore)
+        except Exception as e:
+            print(str(e))
+            return 0
 
     async def buy_total_trade_confluence(self, total_trade_change, buys_change):
         try:
@@ -717,13 +887,6 @@ class TrustScore:  # 30% of total score
             print(f"Error in social presence evaluation: {str(e)}")
             return 0
     
-    async def wallet_cluster_evaluation(self, channel_data: Dict) -> Tuple[float, Dict]:
-        try:
-            pass
-        except Exception as e:
-            print(str(e))
-
-
 
 
 class PenalizeScore:
@@ -1007,6 +1170,7 @@ if __name__ == "__main__":
                 'devholds': 2,
                 'soulscannerpass': True,
                 'bundlebotpass': True,
+                'm5_vol': 23000,
                 'm30_vol': 30000,
                 'm30_vol_change': 75,
                 'total_trade_change': 45,
@@ -1036,6 +1200,7 @@ if __name__ == "__main__":
                 'devholds': 7,
                 'soulscannerpass': False,
                 'bundlebotpass': False,
+                'm5_vol': 18000,
                 'm30_vol': 8000,
                 'm30_vol_change': 25,
                 'total_trade_change': 15,
@@ -1100,7 +1265,7 @@ if __name__ == "__main__":
                 # Tokenomic Score Components
                 print("\n2. TOKENOMIC SCORE COMPONENTS:")
                 print(f"{'  '*2}Volume/Liquidity Relations: {breakdown['tokenomic_score']['volume_marketcap_liquidity_confluence']:.2f}/8.0")
-                print(f"{'  '*2}Age/Volume Relations: {breakdown['tokenomic_score']['age_volume_confluence']:.2f}/10.0")
+                print(f"{'  '*2}Age/Volume Relations: {breakdown['tokenomic_score']['m5_age_volume_confluence']:.2f}/10.0")
                 print(f"{'  '*2}Buy/Trade Confluence: {breakdown['tokenomic_score']['total_trades_buy_confluence']:.2f}/8.0")
                 print(f"{'  '*2}Buying Pressure: {breakdown['tokenomic_score']['buying_pressure']:.2f}/8.0")
                 print(f"{'  '*2}Wallet Growth: {breakdown['tokenomic_score']['wallet_growth']:.2f}/6.0")
