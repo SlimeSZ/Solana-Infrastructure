@@ -1,77 +1,9 @@
 import asyncio
 import aiohttp
 
-class HolderScore:  # 30% of total score
+class TokenAgeConvert:
     def __init__(self):
-        self.MAX_SCORE = 30.0
-        self.HOLDER_AGE_MAX = 15.0  # 15% for holder/age confluence
-        self.SECURITY_MAX = 15.0    # 15% for holder security metrics
-
-    async def calculate_score(
-        self, 
-        token_age,
-        marketcap,
-        liquidity,
-        server_buys,
-        server_sells,
-        server_count,
-        has_tg,
-        has_x,
-        holder_count,
-        dexpaid,
-        top10holds,
-        holdersover5percent,
-        devholds,
-        soulscannerpass,
-        bundlebotpass,
-        m30_vol,
-        m30_vol_change,
-        total_trade_change,
-        buys_change,
-        sells_change,
-        sniper_percent,
-        total_unique_wallets_30m,
-        total_unique_wallets_1h,
-        unique_wallet_change_30m,
-        unique_wallet_change_1h,
-        channel_metrics,
-        wallet_data
-    ):
-        try:
-            # Convert token age to minutes for consistent calculation
-            age_in_minutes = self.convert_token_age_to_minutes(token_age)
-            
-            # Calculate both subscores
-            holder_age_score = await self.holder_count_token_age_confluence(holder_count, age_in_minutes)
-            security_score = await self.holder_security(top10holds, holdersover5percent, devholds, sniper_percent)
-            
-            if holder_age_score is None or security_score is None:
-                return None
-
-            # Normalize security score from 0-40 range to 0-15 range
-            normalized_security_score = (security_score / 40) * self.SECURITY_MAX
-            
-            # Normalize holder age score to 0-15 range
-            normalized_holder_age_score = (holder_age_score / 10) * self.HOLDER_AGE_MAX
-
-            total_score = normalized_holder_age_score + normalized_security_score
-            
-            # Additional context data
-            context = {
-                'holder_age_score': normalized_holder_age_score,
-                'security_score': normalized_security_score,
-                'total_score': total_score,
-                'breakdown': {
-                    'holder_age_evaluation': self.get_holder_age_assessment(normalized_holder_age_score),
-                    'security_evaluation': self.get_security_assessment(normalized_security_score)
-                }
-            }
-
-            return total_score, context
-
-        except Exception as e:
-            print(f"Error in holder score calculation: {str(e)}")
-            return None
+        pass
 
     def convert_token_age_to_minutes(self, token_age):
         """Convert token age to minutes regardless of input unit"""
@@ -88,30 +20,42 @@ class HolderScore:  # 30% of total score
             print(f"Error converting token age: {str(e)}")
             return 0
 
-    def get_holder_age_assessment(self, score):
-        if score >= 13:
-            return "Exceptional holder growth for token age"
-        elif score >= 10:
-            return "Strong holder growth"
-        elif score >= 7:
-            return "Good holder growth"
-        elif score >= 4:
-            return "Moderate holder growth"
-        else:
-            return "Slow holder growth"
+class HolderScore:  # 30% of total score
+    def __init__(self):
+        self.MAX_SCORE = 30.0
+        self.HOLDER_AGE_MAX = 10.0 
+        self.SECURITY_MAX = 20.0    
 
-    def get_security_assessment(self, score):
-        """Get qualitative assessment of security score"""
-        if score >= 13:
-            return "Excellent holder distribution and security"
-        elif score >= 10:
-            return "Strong holder security metrics"
-        elif score >= 7:
-            return "Good holder security"
-        elif score >= 4:
-            return "Moderate security concerns"
-        else:
-            return "Significant security concerns"
+        self.age_conv = TokenAgeConvert()
+
+    async def calculate_score(
+        self, 
+        token_age,
+        holder_count,
+        top10holds,
+        holdersover5percent,
+        devholds,
+        sniper_percent
+    ):
+        try:
+            age_in_minutes = self.age_conv.convert_token_age_to_minutes(token_age)
+            
+            #compute subscores
+            holder_count_token_age_confluence = await self.holder_count_token_age_confluence(holder_count, age_in_minutes)
+            holder_security = await self.holder_security(top10holds, holdersover5percent, devholds, sniper_percent)
+            #normalize subscores
+            normalized_holder_count_token_age_confluence = (holder_count_token_age_confluence / 10) * self.HOLDER_AGE_MAX
+            normalized_holder_security = (holder_security / 40) * self.SECURITY_MAX
+            #total score calculation
+            total_score = normalized_holder_count_token_age_confluence + normalized_holder_security
+            context = {
+                'holder_count_token_age_confluence': normalized_holder_count_token_age_confluence,
+                'holder_security': holder_security
+            }
+            return context, min(total_score, self.MAX_SCORE)
+        except Exception as e:
+            print(f"Error in holder score calculation: {str(e)}")
+            return None
 
     async def holder_count_token_age_confluence(self, holder_count, token_age):
         try:
@@ -169,11 +113,11 @@ class HolderScore:  # 30% of total score
             
             #dev holding
             if devholds == 0:
-                score += 10
+                score += 7
             elif 0 < devholds < 3:
-                score += 5
+                score += 3
             elif 3 <= devholds <= 5:
-                score += 2
+                score += 1
             
             #sniper percent
             if 40 < sniper_percent < 50:
@@ -193,26 +137,20 @@ class HolderScore:  # 30% of total score
         except Exception as e:
             print(str(e))
             return None
-
-    def get_summary(self, total_score):
-        """Get overall summary of holder evaluation"""
-        if total_score >= 25:
-            return "Exceptional holder metrics and security"
-        elif total_score >= 20:
-            return "Very strong holder profile"
-        elif total_score >= 15:
-            return "Good holder metrics"
-        elif total_score >= 10:
-            return "Average holder metrics"
-        else:
-            return "Below average holder metrics"
         
 class TokenomicScore:  # 40% of total score
     def __init__(self):
         self.MAX_SCORE = 40.0
+        self.VOLUME_LIQUIDITY_MAX = 8.0
+        self.TOKEN_VOLUME_MAX = 10.0
+        self.BUY_TRADE_MAX = 8.0
+        self.BUYING_PRESSURE_MAX = 8.0
+        self.WALLET_GROWTH_MAX = 6.0
+        self.age_conv = TokenAgeConvert()
 
     async def calculate_tokenomic_score(
         self,
+        token_age,
         marketcap,
         m30_vol,
         m30_vol_change,
@@ -227,18 +165,27 @@ class TokenomicScore:  # 40% of total score
         holder_count
     ):
         try:
+            age_in_minutes = self.age_conv.convert_token_age_to_minutes(token_age)
             scores = {
-                'volume_liquidity': await self.evaluate_volume_liquidity(m30_vol, liquidity, marketcap),  # 10%
-                'volume_dynamics': await self.evaluate_volume_dynamics(m30_vol_change, total_trade_change),  # 10%
-                'buying_pressure': await self.evaluate_buying_pressure(buys_change, sells_change, holder_count),  # 10%
+                'volume_marketcap_liquidity_confluence': await self.evaluate_volume_liquidity(m30_vol, liquidity, marketcap),  
+                'age_volume_confluence': await self.tokenage_volume_confluence(age_in_minutes, m30_vol_change),
+                'total_trades_buy_confluence': await self.buy_total_trade_confluence(total_trade_change, buys_change), 
+                'buying_pressure': await self.evaluate_buying_pressure(buys_change, sells_change, holder_count), 
                 'wallet_growth': await self.evaluate_wallet_growth(
                     total_unique_wallets_30m, total_unique_wallets_1h,
                     unique_wallet_change_30m, unique_wallet_change_1h,
                     holder_count
-                )  # 10%
+                )  
+            }
+            normalized_scores = {
+                'volume_marketcap_liquidity_confluence': (scores['volume_marketcap_liquidity_confluence'] / 10) * self.VOLUME_LIQUIDITY_MAX,
+                'age_volume_confluence': (scores['age_volume_confluence'] / 10) * self.TOKEN_VOLUME_MAX,
+                'total_trades_buy_confluence': (scores['total_trades_buy_confluence'] / 10) * self.BUY_TRADE_MAX,
+                'buying_pressure': (scores['buying_pressure'] / 10) * self.BUYING_PRESSURE_MAX,
+                'wallet_growth': (scores['wallet_growth'] / 10) * self.WALLET_GROWTH_MAX
             }
 
-            total_score = sum(scores.values())
+            total_score = sum(normalized_scores.values())
             return min(total_score, self.MAX_SCORE)
 
         except Exception as e:
@@ -248,65 +195,164 @@ class TokenomicScore:  # 40% of total score
     async def evaluate_volume_liquidity(self, m30_vol, liquidity, marketcap):
         try:
             score = 0
-            max_subscore = 10.0
+            max_subscore = 10.0  
 
-            # Volume to Liquidity ratio (healthy is 15-30% of liquidity)
-            vol_liq_ratio = (m30_vol / liquidity) * 100 if liquidity > 0 else 0
-            if 20 <= vol_liq_ratio <= 30:
-                score += 5
-            elif 15 <= vol_liq_ratio < 20:
-                score += 4
-            elif 30 < vol_liq_ratio <= 40:
-                score += 3
-            elif vol_liq_ratio > 40:
-                score += 1
+            # Avoid division errors
+            if liquidity <= 0 or marketcap <= 0:
+                return 0  
 
-            # Marketcap to Liquidity ratio (looking for good backing)
-            mc_liq_ratio = (marketcap / liquidity) if liquidity > 0 else 0
-            if 2 <= mc_liq_ratio <= 4:
-                score += 5
-            elif 4 < mc_liq_ratio <= 6:
-                score += 3
-            elif 1 <= mc_liq_ratio < 2:
-                score += 2
+            # 1. Volume-to-Liquidity Ratio (VLR) (New Range: 60-500% is normal)
+            vol_liq_ratio = (m30_vol / liquidity) * 100  
 
-            return min(score, max_subscore)
+            if 100 <= vol_liq_ratio <= 300:  # Ideal range for memecoins
+                score += 5  
+            elif 60 <= vol_liq_ratio < 100 or 300 < vol_liq_ratio <= 400:
+                score += 4  
+            elif 400 < vol_liq_ratio <= 500:  
+                score += 3  
+            elif vol_liq_ratio > 500:  # Extreme volume compared to liquidity
+                score += 1  
+
+            # 2. Marketcap-to-Liquidity Ratio (MCR) (Adjusting for real backing)
+            mc_liq_ratio = marketcap / liquidity  
+
+            if 2 <= mc_liq_ratio <= 5:  # Healthy range
+                score += 5  
+            elif 1.5 <= mc_liq_ratio < 2 or 5 < mc_liq_ratio <= 7:
+                score += 4  
+            elif 1 <= mc_liq_ratio < 1.5 or 7 < mc_liq_ratio <= 10:
+                score += 3  
+            elif mc_liq_ratio > 10:  # High MC but low liquidity = exit risk
+                score += 1  
+                print(f"High MC low Liq risk: EXIT! ")
+
+            return min(score, max_subscore)  
 
         except Exception as e:
             print(f"Error in volume liquidity evaluation: {str(e)}")
             return 0
 
-    async def evaluate_volume_dynamics(self, m30_vol_change, total_trade_change):
+    async def tokenage_volume_confluence(self, token_age, m30_vol_change):
+        try:
+            score = 0
+            max_subscore = 10.0
+            
+            #for new tokens < 60 min
+            if 20 <= m30_vol_change <= 30 and token_age <= 30:
+                score += 2
+            elif 31 <= m30_vol_change <= 50 and token_age <= 30:
+                score += 4
+            elif 20 <= m30_vol_change <= 30 and token_age <= 60:
+                score += 1
+            elif 31 <= m30_vol_change <= 50 and token_age <= 60:
+                score += 2
+            
+            elif 50 <= m30_vol_change <= 80 and token_age <= 30:
+                score += 4
+            elif 50 <= m30_vol_change <= 80 and token_age <= 60:
+                score += 3
+            
+            elif 100 <= m30_vol_change <= 200 and token_age <= 30:
+                score += 7
+            elif 100 <= m30_vol_change <= 200 and token_age <= 60:
+                score += 5
+            
+            elif m30_vol_change >= 201 and token_age <= 30:
+                score += 9
+            elif m30_vol_change >= 201 and token_age <= 60:
+                score += 8
+            #for relatively new tokens (1-2 hrs old)
+            elif 31 <= m30_vol_change <= 50 and token_age <= 90:
+                score += 1
+            
+            elif 50 <= m30_vol_change <= 80 and token_age <= 90:
+                score += 3
+            elif 50 <= m30_vol_change <= 80 and token_age <= 120:
+                score += 2
+            
+            elif 100 <= m30_vol_change <= 200 and token_age <= 90:
+                score += 5
+            elif 100 <= m30_vol_change <= 200 and token_age <= 120:
+                score += 4
+            
+            elif m30_vol_change >= 201 and token_age <= 90:
+                score += 9
+            elif m30_vol_change >= 201 and token_age <= 120:
+                score += 7
+
+
+            #general volume evaluation
+            if 20 <= m30_vol_change <= 50:
+                score += 2
+            elif 51 <= m30_vol_change <= 80:
+                score += 4
+            elif 81 <= m30_vol_change <= 100:
+                score += 6
+            elif 100 < m30_vol_change <= 200:
+                score += 8
+            elif m30_vol_change > 200:
+                score += 10
+
+        except Exception as e:
+            print(str(e))
+            return 0
+
+
+    async def buy_total_trade_confluence(self, total_trade_change, buys_change):
         try:
             score = 0
             max_subscore = 10.0
 
-            # Volume change evaluation
-            if 50 <= m30_vol_change <= 100:
-                score += 5
-            elif 100 < m30_vol_change <= 200:
-                score += 4
-            elif 200 < m30_vol_change <= 300:
-                score += 3
-            elif m30_vol_change > 300:
+            #total trade & buy change in % confluence
+            if 5 <= total_trade_change <= 10 and 10 <= buys_change <= 15:
+                score += 1
+            elif 11 <= total_trade_change <= 16 and 16 <= buys_change <= 20:
                 score += 2
+            elif 16 < total_trade_change <= 30 and 20 < buys_change <= 30:
+                score += 4
+            elif 30 < total_trade_change <= 50 and buys_change >= 30:
+                score += 6
+            elif total_trade_change > 50 and buys_change >= 30:
+                score += 8
+            elif total_trade_change > 50 and buys_change >= 49:
+                score += 10
+            
+            
 
-            # Trade count change evaluation
-            if 30 <= total_trade_change <= 60:
-                score += 5
-            elif 60 < total_trade_change <= 100:
-                score += 4
-            elif 100 < total_trade_change <= 150:
-                score += 3
-            elif total_trade_change > 150:
+            #trade percentage change evaluation
+            if 10 <= total_trade_change <= 20:
+                score += 1
+            elif 20 < total_trade_change <= 30:
                 score += 2
+            elif 30 < total_trade_change <= 50:
+                score += 4
+            elif 50 < total_trade_change <= 70:
+                score += 5
+            elif total_trade_change > 70:
+                score += 7
+            
+            #buy change evaluation (percentage)
+            if 5 <= buys_change <= 11:
+                score += 1
+            elif 11 < buys_change <= 15:
+                score += 2
+            elif 15 < buys_change <= 20:
+                score += 3
+            elif 20 < buys_change <= 35:
+                score += 5
+            elif 35 < buys_change <= 50:
+                score += 7
+            elif 50 < buys_change <= 80:
+                score += 8
+            elif buys_change > 80:
+                score += 10
 
             return min(score, max_subscore)
 
         except Exception as e:
             print(f"Error in volume dynamics evaluation: {str(e)}")
             return 0
-
+        
     async def evaluate_buying_pressure(self, buys_change, sells_change, holder_count):
         try:
             score = 0
@@ -314,26 +360,37 @@ class TokenomicScore:  # 40% of total score
 
             # Buy/Sell ratio confluence
             buy_sell_ratio = buys_change / sells_change if sells_change > 0 else buys_change
-            if 1.5 <= buy_sell_ratio <= 2.5:
-                score += 5
-            elif 2.5 < buy_sell_ratio <= 3.5:
-                score += 4
-            elif 3.5 < buy_sell_ratio <= 5:
-                score += 3
-            elif buy_sell_ratio > 5:
+            if 0.7 <= buy_sell_ratio <= 1:
+                score += 1
+            elif 1 < buy_sell_ratio <= 1.5:
                 score += 2
+            elif 1.5 < buy_sell_ratio <= 2:
+                score += 4
+            elif 2 < buy_sell_ratio <= 3:
+                score += 6
+            elif 3 < buy_sell_ratio <= 4.5:
+                score += 8
+            elif buy_sell_ratio > 4.5:
+                score += 10
 
             # Holder growth confluence
             if holder_count > 0:
-                holder_buy_ratio = buys_change / holder_count
-                if 0.3 <= holder_buy_ratio <= 0.5:
-                    score += 5
-                elif 0.5 < holder_buy_ratio <= 0.8:
-                    score += 4
-                elif 0.8 < holder_buy_ratio <= 1.2:
-                    score += 3
-                elif holder_buy_ratio > 1.2:
+                buys_int = (buys_change / 100) * holder_count
+                holder_buy_ratio = buys_int / holder_count
+                if 0.1 < holder_buy_ratio <= 0.17:
+                    score += 1
+                elif 0.17 < holder_buy_ratio <= 0.22:
                     score += 2
+                elif 0.22 < holder_buy_ratio <= 0.3:
+                    score += 3
+                elif 0.3 < holder_buy_ratio <= 0.4:
+                    score += 4
+                elif 0.4 < holder_buy_ratio <= 0.55:
+                    score += 5
+                elif 0.55 < holder_buy_ratio <= 0.75:
+                    score += 6
+                elif holder_buy_ratio > 0.75:
+                    score += 8
 
             return min(score, max_subscore)
 
@@ -355,25 +412,29 @@ class TokenomicScore:  # 40% of total score
 
             # Evaluate 30m metrics first
             if unique_wallet_change_30m > 0:
-                if 30 <= unique_wallet_change_30m <= 50:
-                    score += 5
-                elif 50 < unique_wallet_change_30m <= 80:
-                    score += 4
-                elif 80 < unique_wallet_change_30m <= 120:
-                    score += 3
-                elif unique_wallet_change_30m > 120:
+                if 20 < unique_wallet_change_1h <= 30:
                     score += 2
+                elif 30 <= unique_wallet_change_30m <= 50:
+                    score += 3
+                elif 50 < unique_wallet_change_30m <= 80:
+                    score += 5
+                elif 80 < unique_wallet_change_30m <= 120:
+                    score += 7
+                elif unique_wallet_change_30m > 120:
+                    score += 9
 
                 # Confluence with holder count
                 wallet_holder_ratio = total_unique_wallets_30m / holder_count if holder_count > 0 else 0
                 if 0.2 <= wallet_holder_ratio <= 0.4:
-                    score += 5
+                    score += 7
                 elif 0.4 < wallet_holder_ratio <= 0.6:
-                    score += 4
+                    score += 5
                 elif 0.6 < wallet_holder_ratio <= 0.8:
-                    score += 3
-                elif wallet_holder_ratio > 0.8:
+                    score += 4
+                elif 0.8 < wallet_holder_ratio <= 1.3:
                     score += 2
+                elif wallet_holder_ratio > 1.3:
+                    score += 0
 
             # Only evaluate 1h metrics if significantly different from 30m
             if (unique_wallet_change_1h != unique_wallet_change_30m and 
@@ -390,30 +451,110 @@ class TokenomicScore:  # 40% of total score
 class TrustScore:  # 30% of total score
     def __init__(self):
         self.MAX_SCORE = 30.0
+        self.SERVER_BS_MAX = 5.0
+        self.TOKEN_AGE_SERVER_MAX = 6.0
+        self.SECURITY_MAX = 5.0
+        self.SERVER_ACTIVITY_MAX = 5.0
+        self.SOCIAL_PRESENCE_MAX = 4.0
+        self.MAJOR_SOCIAL_MAX = 5.0
+        self.age_conv = TokenAgeConvert()
 
     async def calculate_trust_score(
         self,
+        token_age,
         server_buys,
         server_sells,
+        server_count,
         has_tg,
         has_x,
         dexpaid,
         soulscannerpass,
-        bundlebotpass
+        bundlebotpass,
+        buys_change,
+        sells_change
     ):
         try:
+            age_in_minutes = await self.age_conv.convert_token_age_to_minutes(token_age)
             scores = {
-                'security_checks': await self.evaluate_security(dexpaid, soulscannerpass, bundlebotpass),  # 15%
-                'server_activity': await self.evaluate_server_activity(server_buys, server_sells),  # 10%
-                'social_presence': await self.evaluate_social_presence(has_tg, has_x)  # 5%
+                'server_buy_sell_pool_buy_sells_confluence': await self.server_bs_general_bs_ratio(server_buys, server_sells, buys_change, sells_change),
+                'age_server_count_confluence': await self.token_age_server_count_confluence(server_count, age_in_minutes),
+                'security_evaluation': await self.evaluate_security(dexpaid, soulscannerpass, bundlebotpass),
+                'server_activity_evaluation': await self.evaluate_security(age_in_minutes, server_buys, server_sells),
+                'social_presence_evaluation': await self.evaluate_social_presence(has_tg, has_x),
+                'major_social_presence_evaluation': await self.check_major_social_presence(dexpaid, has_tg, has_x, soulscannerpass, bundlebotpass)
+            }
+            normalized_scores = {
+                'server_buy_sell_pool_buy_sells_confluence': (scores['server_buy_sell_pool_buy_sells_confluence'] / 10) * self.SERVER_BS_MAX,
+                'age_server_count_confluence': (scores['age_server_count_confluence'] / 10) * self.TOKEN_AGE_SERVER_MAX,
+                'security_evaluation': (scores['security_evaluation'] / 10) * self.SECURITY_MAX,
+                'server_activity_evaluation': (scores['server_activity_evaluation'] / 10) * self.SERVER_ACTIVITY_MAX,
+                'social_presence_evaluation': (scores['social_presence_evaluation'] / 10) * self.SOCIAL_PRESENCE_MAX,
+                'major_social_presence_evaluation': (scores['major_social_presence_evaluation'] / 10) * self.MAJOR_SOCIAL_MAX
             }
 
-            total_score = sum(scores.values())
+            total_score = sum(normalized_scores.values())
             return min(total_score, self.MAX_SCORE)
 
         except Exception as e:
             print(f"Error in trust score calculation: {str(e)}")
             return 0
+    
+    async def server_bs_general_bs_confluence(self, server_buys, server_sells, buys_change, sells_change):
+        try:
+            score = 0
+            max_subscore = 10
+
+            server_buy_sell_ratio = server_buys / server_sells if server_sells > 0 else server_buys
+            pool_buy_sell_ratio = buys_change / sells_change  if sells_change > 0 else buys_change
+
+            #server buys > sell confluence relation w/ buys% > sells% from pool metadata
+            if 1 <= server_buy_sell_ratio <= 1.3 and 1 <= pool_buy_sell_ratio <= 1.3:
+                score += 1
+            elif 1.3 < server_buy_sell_ratio <= 1.5 and 1.3 < pool_buy_sell_ratio <= 1.5:
+                score += 3
+            elif 1.5 < server_buy_sell_ratio <= 1.8 and 1.5 < pool_buy_sell_ratio <= 1.8:
+                score += 4
+            elif 1.8 < server_buy_sell_ratio <= 2.2 and 1.8 < pool_buy_sell_ratio <= 2.2:
+                score += 5
+            elif 2.2  < server_buy_sell_ratio <= 2.5 and 2.2 < pool_buy_sell_ratio <= 2.5:
+                score += 7
+            elif server_buy_sell_ratio > 2 and pool_buy_sell_ratio > 2:
+                score += 10
+
+            if server_buy_sell_ratio > 2.3 or pool_buy_sell_ratio > 2.3:
+                score += 8
+            
+            return min(score, max_subscore)
+        
+        except Exception as e:
+            print(str(e))
+            return None
+
+    async def token_age_server_count_confluence(self, server_count, token_age):
+        score = 0.0
+        max_subscore = 10
+        try:
+            if token_age < 60 and server_count > 10:
+                score  += 8
+            elif token_age < 60 and 5 < server_count <=10:
+                score += 6
+            elif token_age < 30 and server_count > 10:
+                score += 10
+            elif 70 < token_age < 120 and 10 < server_count < 19:
+                score += 4
+            elif 70 < token_age < 120 and server_count >= 19:
+                score += 6
+            elif 120 < token_age < 200 and 20 <= server_count < 40:
+                score += 4
+            elif token_age < 240 and server_count >= 40:
+                score += 7
+
+            return min(score, max_subscore)
+            
+        except ZeroDivisionError as e:
+            print(str(e))
+            return None
+            
 
     async def evaluate_security(self, dexpaid, soulscannerpass, bundlebotpass):
         try:
@@ -434,7 +575,7 @@ class TrustScore:  # 30% of total score
 
             # Confluence bonus for passing all checks
             if dexpaid and soulscannerpass and bundlebotpass:
-                score += 2  # Bonus points for passing all security checks
+                score += 3  # Bonus points for passing all security checks
             
             # Partial confluence bonuses
             elif (dexpaid and soulscannerpass) or (dexpaid and bundlebotpass) or (soulscannerpass and bundlebotpass):
@@ -446,7 +587,7 @@ class TrustScore:  # 30% of total score
             print(f"Error in security evaluation: {str(e)}")
             return 0
 
-    async def evaluate_server_activity(self, server_buys, server_sells):
+    async def evaluate_server_activity(self, token_age, server_buys, server_sells):
         try:
             score = 0
             max_subscore = 10.0
@@ -454,29 +595,46 @@ class TrustScore:  # 30% of total score
             total_transactions = server_buys + server_sells
             buy_sell_ratio = server_buys / server_sells if server_sells > 0 else server_buys
 
-            # Evaluate total transaction volume
-            if total_transactions >= 50:
-                score += 4
-            elif 30 <= total_transactions < 50:
+            # Evaluate total server buys & token age confluence
+            if total_transactions >= 50 and token_age < 60:
+                score += 8
+            elif total_transactions >= 40 and token_age < 45:
+                score == 8
+            elif total_transactions >= 35 and token_age < 120:
+                score += 5
+            elif 20 <= total_transactions <= 50 and token_age < 30:
+                score += 6
+            elif 10 < total_transactions <= 20 and token_age < 45:
                 score += 3
-            elif 15 <= total_transactions < 30:
-                score += 2
-            elif total_transactions > 0:
+            elif  20 < total_transactions <= 30 and token_age < 60:
+                score += 6
+            elif 20 < total_transactions <= 50 and token_age < 90:
+                score += 5
+            elif 20 < total_transactions <= 50 and token_age < 140:
+                score += 3
+            elif 20 < total_transactions <= 50 and token_age < 230:
                 score += 1
+            elif total_transactions >= 35 and token_age < 200:
+                score += 1
+            elif 50 < total_transactions <= 100 and token_age < 200:
+                score += 6
+            elif 100 < total_transactions <= 200 and token_age < 600: 
+                score += 4
 
-            # Evaluate buy/sell ratio
-            if 1.5 <= buy_sell_ratio <= 2.5:
-                score += 6  # Healthy buy pressure
-            elif 2.5 < buy_sell_ratio <= 3.5:
-                score += 4  # Strong but not excessive
-            elif 3.5 < buy_sell_ratio <= 5:
+
+            # Evaluate server buy/sell ratio
+            if buy_sell_ratio > 2 and token_age < 720: #ensure for Heavy bpi, tokens under 12 hours old
+                score += 10
+            elif buy_sell_ratio > 2 and token_age >= 720:
+                score += 6
+            elif 1.5 <= buy_sell_ratio <= 2:
+                score += 7  # Healthy buy pressure
+            elif 1 < buy_sell_ratio < 1.5:
+                score += 5  # Strong but not excessive
+            elif  0.5 < buy_sell_ratio <= 1:
                 score += 3  # Getting a bit high
-            elif buy_sell_ratio > 5:
-                score += 2  # Potentially manipulated
-            elif 1 <= buy_sell_ratio < 1.5:
-                score += 3  # Balanced but needs more buy pressure
-            else:
-                score += 1  # More sells than buys
+            elif 0.3 < buy_sell_ratio < 0.5:
+                score += 1
 
             return min(score, max_subscore)
 
@@ -507,136 +665,307 @@ class TrustScore:  # 30% of total score
             print(f"Error in social presence evaluation: {str(e)}")
             return 0
 
-    async def get_security_status(self, dexpaid, soulscannerpass, bundlebotpass):
-        """Additional method to get a quick security status summary"""
+    async def check_major_social_presence(self, dexpaid, has_tg, has_x, soulscannerpass, bundlebotpass):
+        score = 0
+        max_subscore = 10
         try:
-            checks_passed = sum([dexpaid, soulscannerpass, bundlebotpass])
-            
-            if checks_passed == 3:
-                return "High Trust - All Security Checks Passed"
-            elif checks_passed == 2:
-                return "Moderate Trust - Passed 2/3 Security Checks"
-            elif checks_passed == 1:
-                return "Low Trust - Only Passed 1 Security Check"
-            else:
-                return "Untrusted - Failed All Security Checks"
+            if dexpaid and has_tg and has_x and soulscannerpass and bundlebotpass:
+                score += 8
+
+            elif (has_tg and has_x) or (soulscannerpass and bundlebotpass) or (dexpaid and soulscannerpass and bundlebotpass) or (soulscannerpass and dexpaid and has_tg or has_x):
+                score += 5
+
+            return min(score, max_subscore)
 
         except Exception as e:
-            print(f"Error getting security status: {str(e)}")
-            return "Error Evaluating Security Status"
-        
+            print(str(e))
 
-class CompositeScorer:
+
+class PenalizeScore:
+    def __init__(self):
+        self.penalty_score = 0
+
+    async def calculate_penalties(
+            self,
+            token_age,
+            liquidity,
+            server_buys,
+            server_sells,
+            has_tg,
+            has_x,
+            holdersover5percent,
+            sniper_percent,
+            soulscannerpasses,
+            bundlebotpasses,
+            dex_paid
+    ):
+        try:
+            penalties = 0
+            
+            # Token age penalty
+            if token_age >= 2200:
+                penalties += 4
+
+            # Liquidity penalty
+            if liquidity <= 20000:
+                penalties += 4
+
+            # Server buy/sell ratio penalty
+            try:
+                server_buy_sell_ratio = server_buys / server_sells if server_sells > 0 else server_buys
+                if 0.5 <= server_buy_sell_ratio < 1:
+                    penalties += 1
+                elif 0 < server_buy_sell_ratio < 0.5:
+                    penalties += 3
+            except ZeroDivisionError:
+                pass
+
+            # Social presence penalties
+            if not has_tg and not has_x:
+                penalties += 3
+            elif not has_tg or not has_x:
+                penalties += 1
+            if not has_tg and not has_x and not dex_paid:
+                penalties += 4
+
+            # Holder concentration penalties
+            if holdersover5percent > 5:
+                penalties += 5
+            elif 3 <= holdersover5percent <= 5:
+                penalties += 2
+            elif holdersover5percent < 3:
+                penalties += 1
+
+            # Sniper percentage penalties
+            if 50 <= sniper_percent < 70:
+                penalties += 4
+            elif sniper_percent >= 70:
+                penalties += 6
+
+            # Security check penalties
+            if not bundlebotpasses or not soulscannerpasses:
+                penalties += 0.7
+            elif not bundlebotpasses and not soulscannerpasses:
+                penalties += 1.5
+
+            # Major red flag combination penalty
+            if (not has_tg and not has_x) and (not bundlebotpasses and not soulscannerpasses) and not dex_paid:
+                penalties += 6
+
+            return penalties
+
+        except Exception as e:
+            print(f"Error calculating penalties: {str(e)}")
+            return 0
+
+class TotalScore:
     def __init__(self):
         self.holder_scorer = HolderScore()
         self.tokenomic_scorer = TokenomicScore()
         self.trust_scorer = TrustScore()
+        self.penalty_scorer = PenalizeScore()
 
-    async def run_scoring_analysis(self):
+    async def calculate_final_score(self, **data):
         try:
-            # Dummy test values
-            test_data = {
-                'token_age': {'value': 120, 'unit': 'minutes'},
-                'marketcap': 500000,
-                'liquidity': 100000,
-                'server_buys': 35,
-                'server_sells': 20,
-                'server_count': 55,
-                'has_tg': True,
-                'has_x': True,
-                'holder_count': 800,
-                'dexpaid': True,
-                'top10holds': 12,
-                'holdersover5percent': 1,
-                'devholds': 2,
-                'soulscannerpass': True,
-                'bundlebotpass': True,
-                'm30_vol': 30000,
-                'm30_vol_change': 75,
-                'total_trade_change': 45,
-                'buys_change': 60,
-                'sells_change': 30,
-                'sniper_percent': 3,
-                'total_unique_wallets_30m': 200,
-                'total_unique_wallets_1h': 300,
-                'unique_wallet_change_30m': 40,
-                'unique_wallet_change_1h': 60,
-                'channel_metrics': None,
-                'wallet_data': None
-            }
+            # Calculate base scores
+            holder_score = await self.holder_scorer.calculate_score(
+                token_age=data['token_age'],
+                holder_count=data['holder_count'],
+                top10holds=data['top10holds'],
+                holdersover5percent=data['holdersover5percent'],
+                devholds=data['devholds'],
+                sniper_percent=data['sniper_percent']
+            )
 
-            # Run all scoring systems
-            holder_score, holder_context = await self.holder_scorer.calculate_score(**test_data)
-            
             tokenomic_score = await self.tokenomic_scorer.calculate_tokenomic_score(
-                marketcap=test_data['marketcap'],
-                m30_vol=test_data['m30_vol'],
-                m30_vol_change=test_data['m30_vol_change'],
-                liquidity=test_data['liquidity'],
-                total_trade_change=test_data['total_trade_change'],
-                buys_change=test_data['buys_change'],
-                sells_change=test_data['sells_change'],
-                total_unique_wallets_30m=test_data['total_unique_wallets_30m'],
-                total_unique_wallets_1h=test_data['total_unique_wallets_1h'],
-                unique_wallet_change_30m=test_data['unique_wallet_change_30m'],
-                unique_wallet_change_1h=test_data['unique_wallet_change_1h'],
-                holder_count=test_data['holder_count']
+                token_age=data['token_age'],
+                marketcap=data['marketcap'],
+                m30_vol=data['m30_vol'],
+                liquidity=data['liquidity'],
+                m30_vol_change=data['m30_vol_change'],
+                total_trade_change=data['total_trade_change'],
+                buys_change=data['buys_change'],
+                sells_change=data['sells_change'],
+                total_unique_wallets_30m=data['total_unique_wallets_30m'],
+                total_unique_wallets_1h=data['total_unique_wallets_1h'],
+                unique_wallet_change_30m=data['unique_wallet_change_30m'],
+                unique_wallet_change_1h=data['unique_wallet_change_1h'],
+                holder_count=data['holder_count']
             )
 
             trust_score = await self.trust_scorer.calculate_trust_score(
-                server_buys=test_data['server_buys'],
-                server_sells=test_data['server_sells'],
-                has_tg=test_data['has_tg'],
-                has_x=test_data['has_x'],
-                dexpaid=test_data['dexpaid'],
-                soulscannerpass=test_data['soulscannerpass'],
-                bundlebotpass=test_data['bundlebotpass']
+                server_buys=data['server_buys'],
+                server_sells=data['server_sells'],
+                has_tg=data['has_tg'],
+                has_x=data['has_x'],
+                dexpaid=data['dexpaid'],
+                soulscannerpass=data['soulscannerpass'],
+                bundlebotpass=data['bundlebotpass'],
+                buys_change=data['buys_change']
             )
 
-            # Calculate total score
-            total_score = holder_score + tokenomic_score + trust_score
+            # Calculate total base score
+            total_score_before_penalties = holder_score + tokenomic_score + trust_score
 
-            # Print detailed analysis
-            print("\n" + "="*50)
-            print("COMPREHENSIVE SCORING ANALYSIS")
-            print("="*50)
-
-            print("\n🏆 TOTAL SCORE: {:.2f}/100".format(total_score))
-            print("-"*50)
-
-            print("\n📊 HOLDER METRICS (30% weight)")
-            print(f"Score: {holder_score:.2f}/30")
-            print(f"Holder Age Evaluation: {holder_context['breakdown']['holder_age_evaluation']}")
-            print(f"Security Evaluation: {holder_context['breakdown']['security_evaluation']}")
-
-            print("\n💰 TOKENOMICS (40% weight)")
-            print(f"Score: {tokenomic_score:.2f}/40")
-            print(f"Volume/Liquidity Ratio: {(test_data['m30_vol']/test_data['liquidity'])*100:.2f}%")
-            print(f"Buy/Sell Change Ratio: {(test_data['buys_change']/test_data['sells_change']):.2f}")
-
-            print("\n🔒 TRUST METRICS (30% weight)")
-            print(f"Score: {trust_score:.2f}/30")
-            security_status = await self.trust_scorer.get_security_status(
-                test_data['dexpaid'],
-                test_data['soulscannerpass'],
-                test_data['bundlebotpass']
+            # Calculate penalties
+            penalties = await self.penalty_scorer.calculate_penalties(
+                token_age=data['token_age'],
+                liquidity=data['liquidity'],
+                server_buys=data['server_buys'],
+                server_sells=data['server_sells'],
+                has_tg=data['has_tg'],
+                has_x=data['has_x'],
+                holdersover5percent=data['holdersover5percent'],
+                sniper_percent=data['sniper_percent'],
+                soulscannerpasses=data['soulscannerpass'],
+                bundlebotpasses=data['bundlebotpass'],
+                dex_paid=data['dexpaid']
             )
-            print(f"Security Status: {security_status}")
 
-            # Provide overall assessment
-            print("\n📝 OVERALL ASSESSMENT")
-            if total_score >= 80:
-                print("Excellent metrics across all categories")
-            elif total_score >= 65:
-                print("Strong performance with some room for improvement")
-            elif total_score >= 50:
-                print("Average performance - exercise caution")
-            else:
-                print("Below average metrics - high risk")
+            # Calculate final score with penalties
+            final_score = max(0, total_score_before_penalties - penalties)
+
+            # Create detailed score breakdown
+            score_breakdown = {
+                'holder_score': holder_score,
+                'tokenomic_score': tokenomic_score,
+                'trust_score': trust_score,
+                'total_before_penalties': total_score_before_penalties,
+                'penalties': penalties,
+                'final_score': final_score
+            }
+
+            return final_score, score_breakdown
 
         except Exception as e:
-            print(f"Error in scoring analysis: {str(e)}")
+            print(f"Error in final score calculation: {str(e)}")
+            return None, None
+             
+
+
+        
+
+
+
+
+
 
 if __name__ == "__main__":
-    scorer = CompositeScorer()
-    asyncio.run(scorer.run_scoring_analysis())
+    if __name__ == "__main__":
+        async def run_test():
+            scorer = TotalScore()
+            
+            # Test cases with different scenarios
+            test_cases = [
+                {
+                    # Good performing token
+                    'token_age': {'value': 120, 'unit': 'minutes'},
+                    'marketcap': 500000,
+                    'liquidity': 100000,
+                    'server_buys': 35,
+                    'server_sells': 20,
+                    'has_tg': True,
+                    'has_x': True,
+                    'holder_count': 800,
+                    'dexpaid': True,
+                    'top10holds': 12,
+                    'holdersover5percent': 1,
+                    'devholds': 2,
+                    'soulscannerpass': True,
+                    'bundlebotpass': True,
+                    'm30_vol': 30000,
+                    'm30_vol_change': 75,
+                    'total_trade_change': 45,
+                    'buys_change': 60,
+                    'sells_change': 30,
+                    'sniper_percent': 3,
+                    'total_unique_wallets_30m': 200,
+                    'total_unique_wallets_1h': 300,
+                    'unique_wallet_change_30m': 40,
+                    'unique_wallet_change_1h': 60
+                },
+                {
+                    # Risky token
+                    'token_age': {'value': 2400, 'unit': 'minutes'},  # Old token
+                    'marketcap': 200000,
+                    'liquidity': 15000,  # Low liquidity
+                    'server_buys': 15,
+                    'server_sells': 25,  # More sells than buys
+                    'has_tg': False,
+                    'has_x': False,  # No social presence
+                    'holder_count': 300,
+                    'dexpaid': False,
+                    'top10holds': 19,  # High concentration
+                    'holdersover5percent': 6,  # Many large holders
+                    'devholds': 7,  # High dev holdings
+                    'soulscannerpass': False,
+                    'bundlebotpass': False,
+                    'm30_vol': 8000,
+                    'm30_vol_change': 25,
+                    'total_trade_change': 15,
+                    'buys_change': 20,
+                    'sells_change': 40,
+                    'sniper_percent': 60,  # High sniper percentage
+                    'total_unique_wallets_30m': 50,
+                    'total_unique_wallets_1h': 80,
+                    'unique_wallet_change_30m': 10,
+                    'unique_wallet_change_1h': 15
+                },
+                {
+                    # Moderate performing token
+                    'token_age': {'value': 360, 'unit': 'minutes'},
+                    'marketcap': 350000,
+                    'liquidity': 50000,
+                    'server_buys': 25,
+                    'server_sells': 22,
+                    'has_tg': True,
+                    'has_x': False,
+                    'holder_count': 500,
+                    'dexpaid': True,
+                    'top10holds': 15,
+                    'holdersover5percent': 3,
+                    'devholds': 4,
+                    'soulscannerpass': True,
+                    'bundlebotpass': False,
+                    'm30_vol': 20000,
+                    'm30_vol_change': 45,
+                    'total_trade_change': 30,
+                    'buys_change': 40,
+                    'sells_change': 35,
+                    'sniper_percent': 25,
+                    'total_unique_wallets_30m': 120,
+                    'total_unique_wallets_1h': 180,
+                    'unique_wallet_change_30m': 25,
+                    'unique_wallet_change_1h': 35
+                }
+            ]
+
+            for i, test_data in enumerate(test_cases, 1):
+                print(f"\n{'='*50}")
+                print(f"Test Case {i}")
+                print(f"{'='*50}")
+                
+                final_score, breakdown = await scorer.calculate_final_score(**test_data)
+                
+                if final_score is not None and breakdown is not None:
+                    print(f"\nScore Breakdown:")
+                    print(f"Holder Score: {breakdown['holder_score']:.2f}/30.0")
+                    print(f"Tokenomic Score: {breakdown['tokenomic_score']:.2f}/40.0")
+                    print(f"Trust Score: {breakdown['trust_score']:.2f}/30.0")
+                    print(f"Total Before Penalties: {breakdown['total_before_penalties']:.2f}/100.0")
+                    print(f"Penalties Applied: -{breakdown['penalties']:.2f}")
+                    print(f"Final Score: {breakdown['final_score']:.2f}/100.0")
+                    
+                    # Print risk assessment
+                    if final_score >= 80:
+                        print("\nRisk Assessment: LOW RISK - Strong metrics across all categories")
+                    elif final_score >= 65:
+                        print("\nRisk Assessment: MODERATE RISK - Good performance with some concerns")
+                    elif final_score >= 50:
+                        print("\nRisk Assessment: HIGH RISK - Exercise significant caution")
+                    else:
+                        print("\nRisk Assessment: VERY HIGH RISK - Multiple red flags present")
+                else:
+                    print("Error calculating scores")
+
+        asyncio.run(run_test())
