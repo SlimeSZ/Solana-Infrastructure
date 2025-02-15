@@ -4,7 +4,7 @@ import aiohttp
 from env import ALEF_ALERT_WEBHOOK
 import discord
 from alefalerts import MessageSender 
-from env import MULTIALERT_WEBHOOK,SCORE_WEBHOOK
+from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK
 import csv
 import io
 
@@ -61,7 +61,7 @@ class MultiAlert:
     def __init__(self):
         pass
 
-    async def multialert_webhook(self, token_name, ca, marketcap, m5_vol, liquidity, telegram, twitter, photon_link, bull_x_link, dex_link, swt_count, swt_buys, swt_sells, fresh_count, fresh_buys, fresh_sells, last_3_tx, holder_count, dev_holding_percentage, token_migrated, passes_soulscanner, passes_bundlebot, dex_paid, token_age, top_10_holding_percentage, holders_over_5, wallet_data, m30_vol, m30_vol_change, new_unique_wallets_30m, new_unique_wallet_30m_change, trade_change_30m, buy_change_30m, sell_change_30m, channel_text):
+    async def multialert_webhook(self, token_name, ca, marketcap, liquidity, telegram, twitter, photon_link, bull_x_link, dex_link, swt_count, swt_buys, swt_sells, fresh_count, fresh_buys, fresh_sells, last_3_tx, holder_count, dev_holding_percentage, token_migrated, passes_soulscanner, passes_bundlebot, dex_paid, token_age, top_10_holding_percentage, holders_over_5, wallet_data, m30_vol, m30_vol_change, new_unique_wallets_30m, new_unique_wallet_30m_change, trade_change_30m, buy_change_30m, sell_change_30m, channel_text, sniper_percent):
         try:
             #place holders
             new_unique_wallet_30m_change = new_unique_wallet_30m_change or 0
@@ -74,6 +74,7 @@ class MultiAlert:
             tradeplaceholder = "Increase" if trade_change_30m > 0 else "Decrease"
             buyplaceholder = "Increase" if buy_change_30m > 0 else "Decrease"
             sellplaceholder = "Increase" if sell_change_30m > 0 else "Decrease"
+            sniperplaceholder = "❌" if sniper_percent >= 45 else "✅"
 
             embed = {
                 "title": "🚨 Multi Ape Alert",
@@ -85,11 +86,11 @@ class MultiAlert:
                             f"CA: `{ca}`\n"
                             f"💰 Marketcap: ${marketcap:,.2f}\n"
                             f"💧 Liquidity: ${liquidity:,.2f}\n"
-                            f"📊 5m Volume: ${m5_vol:,.2f}\n"
+                            #f"📊 5m Volume: ${m5_vol:,.2f}\n"
                             f"📊 30m Volume: ${m30_vol:,.2f} -- Change of: {m30_vol_change:.2f}%\n"
-                            f" Total Trades have {tradeplaceholder}d by {trade_change_30m:.2f} in the last 30 min\n"
+                            f" Total Trades have {tradeplaceholder}d by {trade_change_30m:.2f}% in the last 30 min\n"
                             f" Buys have {buyplaceholder}d by {buy_change_30m:.2f} in the last 30 min \n"
-                            f" Sells have {sellplaceholder}d by {sell_change_30m:.2f} in the last 30 min"
+                            f" Sells have {sellplaceholder}d by {sell_change_30m:.2f} in the last 30 min\n"
                             f"⏰ Age: {token_age['value']} {token_age['unit']}\n" 
                         ),
                         "inline": False
@@ -114,7 +115,7 @@ class MultiAlert:
                             f"📊 Top 10 Hold: {top_10_holding_percentage:.2f}%\n"
                             f"⚠️ Holders >5%: {holders_over_5}\n"
                             f"👨‍💼 Dev Holding: {dev_holding_percentage:.2f}%\n"
-                            f" {new_unique_wallets_30m} New Unique Wallets in 30min. {uniqueplaceholder} of {new_unique_wallet_30m_change}"
+                            f" {new_unique_wallets_30m} New Unique Wallets in 30min. {uniqueplaceholder} of {new_unique_wallet_30m_change}%"
                         ),
                         "inline": False
                     },
@@ -125,6 +126,7 @@ class MultiAlert:
                             f"🔍 Bundle Bot: {'✅' if passes_bundlebot else '❌'}\n"
                             f"💰 DEX Paid: {'✅' if dex_paid else '❌'}\n"
                             f"🔄 Token Migrated: {'⚠️' if token_migrated else '✅'}\n"
+                            f"🎯 Sniper Percent: {sniper_percent:.2f}% {sniperplaceholder}\n"
                         ),
                         "inline": False
                     }
@@ -197,6 +199,80 @@ class MultiAlert:
             print(f"Error in multialert webhook: {str(e)}")
             import traceback
             traceback.print_exc()
+    
+    async def twox_multialert_webhook(self, token_name, ca, initial_mc, new_mc, increase_percentage, x_val, time_elapsed):
+        try:
+            data = {
+                "username": "Marketcap Increase Alert",
+                "embeds": [
+                    {
+                        "title": "🚀 2x+ Alert!",
+                        "description": (
+                            f"Token `{token_name}` has done a {x_val}X! Increase of {increase_percentage:.2f}"
+                            f"CA: `{ca}`"
+                        ),
+                        "fields": [
+                            {
+                                "name": "Initial MC",
+                                "value": f"${initial_mc:,.2f}",
+                                "inline": False
+                            },
+                            {
+                                "name": "New MC",
+                                "value": f"${new_mc:,.2f}",
+                                "inline": False
+                            },
+                            {
+                                "name": f"Increase of {increase_percentage:.2f}",
+                                "value": f"{x_val}X !!!",
+                                "inline": False
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(TWOX_WEBHOOK, json=data) as response:
+                    if response.status == 204:
+                        print(f"2x+ Alert Sent SUCCESSFULLLYYY")
+                    else:
+                        print(f"Error sending 2x alert :(((((((((((())))))))))))")
+        except Exception as e:
+            print(str(e))
+
+    async def tensolbuywebhook(self, token_name, ca, channel_name):
+        try:
+            data = {
+                "username": "Ten sol + Buy Alert",
+                "embeds": [
+                    {
+                        "title": "10+ SOL BUY DETECTED",
+                        "fields": [
+                            {
+                                "name": f"Token: {token_name}",
+                                "value": f"CA: {ca}",
+                                "inline": False
+                            },
+                            {
+                                "name": "Aped By wallet(s) in:",
+                                "value": channel_name,
+                                "inline": False
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(SOL_10_5_WEBHOOK, json=data) as response:
+                    if response.status == 204:
+                        print("Alert for 10+ SOL buy SENT")
+                    else:
+                        print(f"Failed to send webhook, status code: {response.status}")
+        except Exception as e:
+            print(f"Failed to send webhook: {str(e)}")
+
 class ScoreReportWebhook:
     def __init__(self):
         pass

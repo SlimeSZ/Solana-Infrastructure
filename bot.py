@@ -18,6 +18,7 @@ from alefalerts import MessageSender
 from topholders import HolderAmount
 from walletpnl import WAlletPNL
 from compositescore import CompositeScore
+from scoring import HolderScore, TokenomicScore, TrustScore
 from marketcap import MarketcapFetcher
 from bdmetadata import BuySellTradeUniqueData, Tokenomics
 from twoxmonitor import TwoXChecker
@@ -46,6 +47,12 @@ class ScrapeAD:
         self.ma_webhooks = MultiAlert()      
         self.get_top_holders = HolderAmount()
         self.score = CompositeScore()
+        
+        self.holderscore = HolderScore()
+        self.tokenomicscore = TokenomicScore()
+        self.trustscore = TrustScore()
+
+        
         self.score_webhook_usage = ScoreReportWebhook()
         self.backup_mc = MarketcapFetcher()
         self.bd_trade_data = BuySellTradeUniqueData()
@@ -161,15 +168,6 @@ class ScrapeAD:
                             raw_tx = tx_data['raw_description']
                             tx_type = tx_data['type']
                             sol_amount = tx_data['sol_amount']
-                            """
-                            if sol_amount >= 10:
-                                print(f"10+ Sol buy detected: {raw_tx}")
-                                if ca not in self.ten_five_sol_alerts:
-                                    self.ten_five_sol_alerts.add(ca)
-                            elif 5 < sol_amount < 10:
-                                print(f"5+ Sol buy detected: {raw_tx}")
-                                self.ten_five_sol_alerts.add(ca)
-                            """
                                     
                             raw_tx = tx_data['raw_description']
 
@@ -202,8 +200,11 @@ class ScrapeAD:
                                     await self.check_multialert(session, token_name, ca, channel_name)
                                 elif channel_name == "Insider":
                                     await self.check_multialert(session, token_name, ca, channel_name)
-
-                        
+                            if ca and sol_amount > 10:
+                                if ca not in self.ten_five_sol_alerts:
+                                    self.ten_five_sol_alerts.add(ca)
+                                    print(f"10+ SOL BUY DETECTED")
+                                    await self.ma_webhooks.tensolbuywebhook(token_name, ca, channel_name)
 
             except Exception as e:
                 print(f"Error in SWT process: {str(e)}")
@@ -397,6 +398,7 @@ class ScrapeAD:
                 self.multi_alerted_cas.add(ca)
                 print(f"\nMUlTI ALERT FOUND\n{"*" * 50}")
 
+                
                 #create two_x checker task
                 asyncio.create_task(self.start_2x_monitoring(ca, token_name))
 
@@ -428,7 +430,7 @@ class ScrapeAD:
                     pool_address = dex_data.get('pool_address', 0)
                     print(f"MC: {marketcap}")
                     print(f"Liquidity: {liquidity}")
-                    print(f"5m Vol: {m5_vol}")
+                    #print(f"5m Vol: {m5_vol}")
                     print(f"Pool Addres: {pool_address}")
                 except Exception as e:
                     print(str(e))
@@ -580,18 +582,18 @@ class ScrapeAD:
                             #await self.rickbot_webhook.full_send_ca_to_alefdao(ca)
                             #await self.slime_alert.send_message(ca)
                             print(f"\nBundle bot ALSO PASSED FOR: {ca}")
-                            """
-                            tg_metrics['holding_percentage'] = ['holding_percentage']
-                            if bundle_data['token_bonded']:
-                                if isinstance(bundle_data['token_bonded'], bool):
-                                    tg_metrics['token_migrated'] = bundle_data['token_bonded']
-                                    print(f"Token Migrated")
-                                else:
-                                    print(F"Token On Pump")
-                            else:
-                                await self.rickbot_webhooks.conditional_send_ca_to_alefdao(ca)
-                                await self.slime_alert.send_message(ca)
-                            """
+                            
+                            #tg_metrics['holding_percentage'] = ['holding_percentage']
+                            #if bundle_data['token_bonded']:
+                                #if isinstance(bundle_data['token_bonded'], bool):
+                                    #tg_metrics['token_migrated'] = bundle_data['token_bonded']
+                                    #print(f"Token Migrated")
+                                #else:
+                                    #print(F"Token On Pump")
+                            #else:
+                                #await self.rickbot_webhooks.conditional_send_ca_to_alefdao(ca)
+                                #await self.slime_alert.send_message(ca)
+                            
                 except Exception as e:
                     print(f"Bundle Bot Error: {str(e)}")
 
@@ -661,16 +663,16 @@ class ScrapeAD:
                                                 'avg_entry': wallet_pnl['average_entry_per_trade'] if wallet_pnl['average_entry_per_trade'] > 0 else None
                                             }
                                             wallets_processed += 1
-                                            """
-                                                print(f"\nWallet {wallet_address[:8]}...")
-                                                print(f"Holding: {wallet_info['percentage']}%")
-                                                print(f"Last 100 TX PNL: {wallet_pnl['last_100_tx_pnl']:.4f} SOL")
-                                                print(f"Tokens Traded: {wallet_pnl['tokens_traded']}")
-                                                print(f"Wins/Losses: {wallet_pnl['trades_won']}/{wallet_pnl['trades_loss']}")
-                                                print(f"Average Sol entry: {wallet_pnl['average_entry_per_trade']}")
-                                                print("-" * 30)
-                                                wallets_processed += 1
-                                                """
+                                            
+                                                #print(f"\nWallet {wallet_address[:8]}...")
+                                                #print(f"Holding: {wallet_info['percentage']}%")
+                                                #print(f"Last 100 TX PNL: {wallet_pnl['last_100_tx_pnl']:.4f} SOL")
+                                                #print(f"Tokens Traded: {wallet_pnl['tokens_traded']}")
+                                                #print(f"Wins/Losses: {wallet_pnl['trades_won']}/{wallet_pnl['trades_loss']}")
+                                                #print(f"Average Sol entry: {wallet_pnl['average_entry_per_trade']}")
+                                                #print("-" * 30)
+                                                #wallets_processed += 1
+                                                
                 all_transactions = []
 
                 # Add transactions from each source
@@ -724,7 +726,7 @@ class ScrapeAD:
 
                 channel_text = "No active channels yet" if not channels_ca_found_in else "\n".join([f"• {channel} ({amount:.2f}sol)" for channel, amount in channels_ca_found_in.items() if amount > 0])                
 
-
+            
 
 
 
@@ -745,7 +747,7 @@ class ScrapeAD:
                     soul_scanner_pass=soul_data['passes'],
                     bundle_bot_pass=bundle_data['passes'] if bundle_data else False,
                     marketcap=marketcap,
-                    m5_vol=m5_vol,
+                    #m5_vol=m5_vol,
                     liquidity=liquidity,
                     server_buys=total_swt_buys + total_fresh_buys,
                     server_sells=total_swt_sells + total_fresh_sells,
@@ -805,6 +807,51 @@ class ScrapeAD:
                     channel_text=channel_text,
                     sniper_percent=sniper_percent
                 )     
+
+
+
+
+                try:
+                    holder_score = await self.holderscore.calculate_score(
+                        token_age=token_age,
+                        holder_count=holder_count,
+                        top10holds=total_held,
+                        holdersover5percent=holders_over_5,
+                        devholds=dev_holding,
+                        sniper_percent=sniper_percent
+                    )
+                    tokenomic_score = await self.tokenomicscore.calculate_tokenomic_score(
+                        m30_vol=m30_vol,
+                        liquidity=liquidity,
+                        marketcap=marketcap,
+                        m30_vol_change=m30_vol_change,
+                        total_trade_change=trade_percent_change_30m,
+                        buys_change=buy_percent_change_30m,
+                        sells_change=sell_percent_change_30m,
+                        holder_count=holder_count,
+                        total_unique_wallets_30m=new_unique_wallet_count_30m,
+                        total_unique_wallets_1h=new_unique_wallet_count_1h,
+                        unique_wallet_change_30m=new_unique_wallet_percent_change_30m,
+                        unique_wallet_change_1h=new_unique_wallet_percent_change_1h
+                    )
+                    trust_score = await self.trustscore.calculate_trust_score(
+                        dexpaid=dex_paid,
+                        soulscannerpass=soul_data['passes'],
+                        bundlebotpass=bundle_data['passes'],
+                        server_buys=total_swt_buys,
+                        server_sells=total_fresh_buys,
+                        has_tg=telegram,
+                        has_x=twitter
+                    )
+                except Exception as e:
+                    print(f"Error calculating Scores: \n{str(e)}")
+
+                total_score = holder_score + tokenomic_score + trust_score
+
+
+
+
+
         
         except Exception as e:
             print(f"Error in running check for multialert: {str(e)}")
