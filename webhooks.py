@@ -4,7 +4,7 @@ import aiohttp
 from env import ALEF_ALERT_WEBHOOK
 import discord
 from alefalerts import MessageSender 
-from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK
+from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, TOKEN_SCORE_WEBHOOK
 import csv
 import io
 
@@ -272,6 +272,20 @@ class MultiAlert:
                         print(f"Failed to send webhook, status code: {response.status}")
         except Exception as e:
             print(f"Failed to send webhook: {str(e)}")
+
+    async def score_webhook(self, ca):
+        try:
+            data = {
+
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(SCORE_WEBHOOK, json=data) as response:
+                    if response.status == 204:
+                        print(f"Sent Score Report Aler")
+                    else:
+                        print(response.status)
+        except Exception as e:
+            print(f"Failed to send Score Report Webhook: {str(e)}")
 
 class ScoreReportWebhook:
     def __init__(self):

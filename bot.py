@@ -846,7 +846,7 @@ class ScrapeAD:
                 except Exception as e:
                     print(f"Error calculating Scores: \n{str(e)}")
 
-                total_score = holder_score + tokenomic_score + trust_score
+                total_score_before_penalties = holder_score + tokenomic_score + trust_score
 
 
 
