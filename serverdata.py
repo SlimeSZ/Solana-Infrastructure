@@ -15,20 +15,9 @@ class ServerData:
         self.tx = TX_ANALYZER()
         self.target_ca = None
         
-        # Channel configurations
-        self.swt_channel_ids = [
-            1273250694257705070,  # whale  
-            1280465862163304468,  # smart
-            1279040666101485630,  # legend
-            1280445495482781706,  # kol alpha
-            1273245344263569484,  # kol reg
-            1283348335863922720,  # challenge
-            1273670414098501725,  # high freq
-            1277231510574862366   # insider
-        ]
-        
-        self.channel_names = {
-            1273250694257705070: "Whale",
+        # SWT Channel configurations
+        self.swt_channel_ids = {
+            1273250694257705070: "Whale",  
             1280465862163304468: "Smart",
             1279040666101485630: "Legend",
             1280445495482781706: "Kol Alpha",
@@ -38,13 +27,15 @@ class ServerData:
             1277231510574862366: "Insider"
         }
         
-        self.degen_channel_id = 1278278627997384704
-        
-        self.fresh_channel_names = {
+        # Fresh channel configurations
+        self.fresh_channel_ids = {
             1281675800260640881: "Fresh",
             1281676746202026004: "Fresh 5sol 1m MC",
             1281677424005746698: "Fresh 1h"
         }
+        
+        # Degen channel configuration
+        self.degen_channel_id = 1278278627997384704
 
     def _create_base_server_data(self):
         """Creates the base server data structure"""
@@ -67,7 +58,7 @@ class ServerData:
             
         server_data = self._create_base_server_data()
         
-        for channel_id in self.swt_channel_ids:
+        for channel_id, channel_name in self.swt_channel_ids.items():
             channel = self.bot.get_channel(channel_id)
             if channel:
                 try:
@@ -131,8 +122,7 @@ class ServerData:
                                 print(f"Max retries reached for {channel.name}, skipping...")
                                 break
 
-                    # Update channel-specific data with channel name from mapping
-                    channel_name = self.channel_names.get(channel_id, channel.name)
+                    # Update channel-specific data
                     server_data['channels'][channel_name] = {
                         'count': channel_count,
                         'buys': channel_buys,
@@ -163,7 +153,7 @@ class ServerData:
         server_data = self._create_base_server_data()
         del server_data['trading_links']  # Not needed for fresh data
         
-        for channel_id in self.fresh_channel_ids:
+        for channel_id, channel_name in self.fresh_channel_ids.items():
             channel = self.bot.get_channel(channel_id)
             if channel:
                 try:
@@ -190,8 +180,7 @@ class ServerData:
                                                     else:
                                                         channel_sells += sol_amount
                     
-                    # Update channel-specific data with channel name from mapping
-                    channel_name = self.fresh_channel_names.get(channel_id, channel.name)
+                    # Update channel-specific data
                     server_data['channels'][channel_name] = {
                         'count': channel_count,
                         'buys': channel_buys,

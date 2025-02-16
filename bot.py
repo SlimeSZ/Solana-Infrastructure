@@ -21,7 +21,7 @@ from scoring import HolderScore, TokenomicScore, TrustScore, PenalizeScore
 from marketcap import MarketcapFetcher
 from bdmetadata import BuySellTradeUniqueData, Tokenomics
 from twoxmonitor import TwoXChecker
-from webhooks import AlefAlertWebhook, MultiAlert, ScoreReportWebhook
+from webhooks import AlefAlertWebhook, MultiAlert 
 
 intents = discord.Intents.all()
 intents.message_content = True
@@ -52,7 +52,6 @@ class ScrapeAD:
         self.penalizescore = PenalizeScore()
 
         
-        self.score_webhook_usage = ScoreReportWebhook()
         self.backup_mc = MarketcapFetcher()
         self.bd_trade_data = BuySellTradeUniqueData()
         self.bd_tokenomic_data = Tokenomics()
@@ -379,7 +378,7 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "9V4xdNb7n7zmkXZDAiYrm7a48QVrqCrgjE1LUxjQpump"
+            test_ca = "4gkEQvz7bHEJgMRRwzxPW1ShK2PLoX8a6ryFkXAKpump"
             if ca == test_ca:
                 multialert_found = True
             """
@@ -417,9 +416,12 @@ class ScrapeAD:
 
                 try:
                     token_name = dex_data.get('token_name') or backup_bd_data.get('name', 'Unknown Name')
+                    print(f"Token Name: {token_name} CA: {ca}")
                     backup_mc = await self.backup_mc.calculate_marketcap(ca)
                     marketcap = backup_bd_data.get('marketcap', backup_mc)
+                    print(f"Marketcap: ${marketcap:.2f}")
                     m5_vol = dex_data.get('token_5m_vol', 0)
+                    print(f"5m volume: {m5_vol:.2f}")
                     if backup_bd_data:
                         m30_vol = backup_bd_data.get('30_min_vol', 0)
                         m30_vol_change = backup_bd_data.get('30_min_vol_percent_change', 0)
@@ -427,9 +429,6 @@ class ScrapeAD:
                     liquidity = backup_bd_data.get('liquidity', 0)
                     print(f"Liquidity: {liquidity}")
                     pool_address = dex_data.get('pool_address', 0)
-                    print(f"MC: {marketcap}")
-                    print(f"Liquidity: {liquidity}")
-                    #print(f"5m Vol: {m5_vol}")
                     print(f"Pool Addres: {pool_address}")
                 except Exception as e:
                     print(str(e))
@@ -442,6 +441,8 @@ class ScrapeAD:
                         telegram = backup_bd_data.get('telegram')
                     if not twitter and backup_bd_data:
                         twitter = backup_bd_data.get('twitter')
+                    print(f"Twitter: {twitter}")
+                    print(f"Telegram: {telegram}")
                 except Exception as e:
                     print(f"Error processing social data: {e}")
                 
@@ -549,6 +550,7 @@ class ScrapeAD:
                 last_swt = swt_data['latest_descriptions'][-1:] if swt_data else []
                 last_degen = degen_data['latest_descriptions'][-1:] if degen_data else []
                 last_fresh = fresh_data['latest_descriptions'][-1:] if fresh_data else []
+                print(f"\nLast 3 Descriptions: ")
                 print(last_swt)
                 print(last_fresh)
                 print(last_degen)
@@ -621,12 +623,11 @@ class ScrapeAD:
                 age = f"{age_value} {age_unit}"
                 print(age)
 
-                #get holder data
                 holder_criteria = False
                 holder_data = await self.get_top_holders.calculate_holder_value(ca)
                 if holder_data:
-                    holder_values, holder_evaluation = holder_data  # Unpack the tuple
-                    if holder_values:  # Check if holder_values exists
+                    holder_values, holder_evaluation = holder_data  
+                    if holder_values:  
                         metadata = holder_values.get('metadata', {})
                         if metadata:
                             holders_over_5 = metadata.get('holders_over_5_percent', 0)
@@ -637,9 +638,7 @@ class ScrapeAD:
                                 print(f"Warning: {holders_over_5} Holders w/ over 5%")
 
                             #check criteria to run top wallet pnl analysis
-                            #test: 
-                            if holders_over_5 == 99:
-                            #iREAL: f holders_over_5 <= 2 and age_value != 'days' and soul_data['passes']:
+                            if total_held < 25 and soul_data['passes'] and holders_over_5 < 4 and dev_holding < 5:
                                 holder_criteria = True
                                 if holder_criteria:
                                     wallet_analysis = {}
@@ -711,9 +710,7 @@ class ScrapeAD:
                     }
                 }
 
-                #list channels the ca was detected in
                 channels_ca_found_in = {}
-
                 for channel_name, data in swt_data['channels'].items():
                     if data['buys'] > 0:
                         channels_ca_found_in[channel_name] = data['buys']
@@ -728,43 +725,116 @@ class ScrapeAD:
                 #----------------------------------------------------------------------------------
 
                 holder_score = await self.holderscore.calculate_score(
-                    token_age, holder_count, total_held, holders_over_5, dev_holding,
-                    sniper_percent, wallet_analysis if wallet_analysis else None
-                )
-                tokenomic_score = await self.tokenomicscore.calculate_tokenomic_score(
-                    token_age, marketcap, m30_vol, m30_vol_change, liquidity,
-                    trade_percent_change_30m, buy_percent_change_30m, sell_percent_change_30m,
-                    new_unique_wallet_count_30m, new_unique_wallet_count_1h, new_unique_wallet_percent_change_30m, new_unique_wallet_percent_change_1h,
-                    holder_count, m5_vol
-                )
-                total_server_buys = total_fresh_buys + total_swt_buys
-                total_server_sells = total_fresh_sells + total_swt_sells
-                total_server_count = total_swt_count + total_fresh_count
-                trust_score = await self.trustscore.calculate_trust_score(
-                    token_age, total_server_buys, total_server_sells, total_server_count,
-                    telegram, twitter, dex_paid, soul_data['passes'], bundle_data['passes'],
-                    buy_percent_change_30m, sell_percent_change_30m
+                    token_age=token_age,
+                    holder_count=holder_count,
+                    top10holds=total_held,
+                    holdersover5percent=holders_over_5,
+                    devholds=dev_holding,
+                    sniper_percent=sniper_percent,
+                    wallet_data=wallet_analysis if holder_criteria else None
                 )
 
-                composite_score = holder_score + tokenomic_score['total_score_before_penalties']
+                tokenomic_score, tokenomic_breakdown = await self.tokenomicscore.calculate_tokenomic_score(
+                    token_age=token_age,
+                    marketcap=marketcap,
+                    m30_vol=m30_vol,
+                    m30_vol_change=m30_vol_change,
+                    liquidity=liquidity,
+                    total_trade_change=trade_percent_change_30m,
+                    buys_change=buy_percent_change_30m,
+                    sells_change=sell_percent_change_30m,
+                    total_unique_wallets_30m=new_unique_wallet_count_30m,
+                    total_unique_wallets_1h=new_unique_wallet_count_1h,
+                    unique_wallet_change_30m=new_unique_wallet_percent_change_30m,
+                    unique_wallet_change_1h=new_unique_wallet_percent_change_1h,
+                    holder_count=holder_count,
+                    m5_vol=m5_vol
+                )
+
+                trust_score, trust_breakdown = await self.trustscore.calculate_trust_score(
+                    token_age=token_age,
+                    server_buys=total_swt_buys + total_fresh_buys,
+                    server_sells=total_swt_sells + total_fresh_sells,
+                    server_count=total_swt_count + total_fresh_count,
+                    has_tg=telegram,
+                    has_x=twitter,
+                    dexpaid=dex_paid,
+                    soulscannerpass=soul_data['passes'],
+                    bundlebotpass=bundle_data['passes'],
+                    buys_change=buy_percent_change_30m,
+                    sells_change=sell_percent_change_30m
+                )
+
+                # Calculate penalties
+                penalties = await self.penalizescore.calculate_penalties(
+                    token_age=token_age,
+                    liquidity=liquidity,
+                    server_buys=total_swt_buys + total_fresh_buys,
+                    server_sells=total_swt_sells + total_fresh_sells,
+                    has_tg=telegram,
+                    has_x=twitter,
+                    holdersover5percent=holders_over_5,
+                    sniper_percent=sniper_percent,
+                    soulscannerpasses=soul_data['passes'],
+                    bundlebotpasses=bundle_data['passes'],
+                    dex_paid=dex_paid
+                )
+
+                # Calculate composite score
+                total_score_before_penalties = (
+                    holder_score['total_score'] + 
+                    tokenomic_breakdown['total_score'] + 
+                    trust_breakdown['total_score']
+                )
+
+                final_score = max(0, total_score_before_penalties - penalties)
+
+                # Send to webhook
+                await self.ma_webhooks.score_webhook(
+                    token_name=token_name,
+                    ca=ca,
+                    
+                    holder_total=holder_score['total_score'],
+                    holder_age_confluence=holder_score['holder_count_age_confluence'],
+                    holder_security=holder_score['holder_security'],
+                    holder_wallet_analysis=holder_score['wallet_score'],
+                    
+                    tokenomic_total=tokenomic_breakdown['total_score'],
+                    tokenomic_vol_liq=tokenomic_breakdown['volume_marketcap_liquidity_confluence'],
+                    tokenomic_30m_vol=tokenomic_breakdown['m30_age_volume_confluence'],
+                    tokenomic_5m_vol=tokenomic_breakdown['m5_age_volume_confluence'],
+                    tokenomic_trade_confluence=tokenomic_breakdown['total_trades_buy_confluence'],
+                    tokenomic_buy_pressure=tokenomic_breakdown['buying_pressure'],
+                    tokenomic_wallet_growth=tokenomic_breakdown['wallet_growth'],
+                    
+                    trust_total=trust_breakdown['total_score'],
+                    trust_bs_confluence=trust_breakdown['server_buy_sell_pool_buy_sells_confluence'],
+                    trust_age_count=trust_breakdown['age_server_count_confluence'],
+                    trust_security=trust_breakdown['security_evaluation'],
+                    trust_activity=trust_breakdown['server_activity_evaluation'],
+                    trust_social=trust_breakdown['social_presence_evaluation'],
+                    
+                    total_before_penalties=total_score_before_penalties,
+                    penalties=penalties,
+                    final_score=final_score
+                )
+
+                if final_score >= 75:
+                    print(f"Running Twitter Analysis for: {ca}")
+                    
+                
+
+
+
+
                             
 
-
-
-
-
-
-
-                """
-                if score_data:
-                    await self.score_webhook_usage.send_score_report(ca, token_name, score_data)
-                """
 
                 await self.ma_webhooks.multialert_webhook(
                     token_name=token_name,
                     ca=ca,
                     marketcap=marketcap,
-                    #m5_vol=m5_vol,
+                    m5_vol=m5_vol,
                     liquidity=liquidity,
                     telegram=telegram,
                     twitter=twitter,
@@ -796,48 +866,10 @@ class ScrapeAD:
                     buy_change_30m=buy_percent_change_30m,
                     sell_change_30m=sell_percent_change_30m,
                     channel_text=channel_text,
-                    sniper_percent=sniper_percent
+                    sniper_percent=sniper_percent,
+                    comp_score=final_score
                 )     
 
-
-
-
-                try:
-                    holder_score = await self.holderscore.calculate_score(
-                        token_age=token_age,
-                        holder_count=holder_count,
-                        top10holds=total_held,
-                        holdersover5percent=holders_over_5,
-                        devholds=dev_holding,
-                        sniper_percent=sniper_percent
-                    )
-                    tokenomic_score = await self.tokenomicscore.calculate_tokenomic_score(
-                        m30_vol=m30_vol,
-                        liquidity=liquidity,
-                        marketcap=marketcap,
-                        m30_vol_change=m30_vol_change,
-                        total_trade_change=trade_percent_change_30m,
-                        buys_change=buy_percent_change_30m,
-                        sells_change=sell_percent_change_30m,
-                        holder_count=holder_count,
-                        total_unique_wallets_30m=new_unique_wallet_count_30m,
-                        total_unique_wallets_1h=new_unique_wallet_count_1h,
-                        unique_wallet_change_30m=new_unique_wallet_percent_change_30m,
-                        unique_wallet_change_1h=new_unique_wallet_percent_change_1h
-                    )
-                    trust_score = await self.trustscore.calculate_trust_score(
-                        dexpaid=dex_paid,
-                        soulscannerpass=soul_data['passes'],
-                        bundlebotpass=bundle_data['passes'],
-                        server_buys=total_swt_buys,
-                        server_sells=total_fresh_buys,
-                        has_tg=telegram,
-                        has_x=twitter
-                    )
-                except Exception as e:
-                    print(f"Error calculating Scores: \n{str(e)}")
-
-                total_score_before_penalties = holder_score + tokenomic_score + trust_score
 
 
 
@@ -848,7 +880,22 @@ class ScrapeAD:
             print(f"Error in running check for multialert: {str(e)}")
             import traceback
             print(traceback.format_exc())
-                
+
+    async def calculate_composite_score(holder_score, tokenomic_score, trust_score):
+        try:
+            composite_score = holder_score + tokenomic_score + trust_score
+            return composite_score
+        except Exception as e:
+            print(str(e))    
+            return None
+        
+    async def apply_penalities(composite_score, penalties):
+        try:
+            final_score = max(0, composite_score - penalties)
+            return final_score
+        except Exception as e:
+            print(f"{str(e)}")
+            return None
                     
 
 
@@ -879,7 +926,7 @@ class Main:
             # Create all tasks including bot startup
             tasks = [
                 bot.start(DISCORD_BOT_TOKEN),
-                self.ad_scraper.check_multialert(session, "test_name", '9V4xdNb7n7zmkXZDAiYrm7a48QVrqCrgjE1LUxjQpump', "test_channel")
+                self.ad_scraper.check_multialert(session, "test_name", '4gkEQvz7bHEJgMRRwzxPW1ShK2PLoX8a6ryFkXAKpump', "test_channel")
             ]
             
             try:

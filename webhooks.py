@@ -4,9 +4,10 @@ import aiohttp
 from env import ALEF_ALERT_WEBHOOK
 import discord
 from alefalerts import MessageSender 
-from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, TOKEN_SCORE_WEBHOOK
+from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, TOKEN_SCORE_WEBHOOK, SCORE_WEBHOOK
 import csv
 import io
+from datetime import datetime
 
 class AlefAlertWebhook:
     def __init__(self):
@@ -61,13 +62,14 @@ class MultiAlert:
     def __init__(self):
         pass
 
-    async def multialert_webhook(self, token_name, ca, marketcap, liquidity, telegram, twitter, photon_link, bull_x_link, dex_link, swt_count, swt_buys, swt_sells, fresh_count, fresh_buys, fresh_sells, last_3_tx, holder_count, dev_holding_percentage, token_migrated, passes_soulscanner, passes_bundlebot, dex_paid, token_age, top_10_holding_percentage, holders_over_5, wallet_data, m30_vol, m30_vol_change, new_unique_wallets_30m, new_unique_wallet_30m_change, trade_change_30m, buy_change_30m, sell_change_30m, channel_text, sniper_percent):
+    async def multialert_webhook(self, token_name, ca, marketcap, m5_vol, liquidity, telegram, twitter, photon_link, bull_x_link, dex_link, swt_count, swt_buys, swt_sells, fresh_count, fresh_buys, fresh_sells, last_3_tx, holder_count, dev_holding_percentage, token_migrated, passes_soulscanner, passes_bundlebot, dex_paid, token_age, top_10_holding_percentage, holders_over_5, wallet_data, m30_vol, m30_vol_change, new_unique_wallets_30m, new_unique_wallet_30m_change, trade_change_30m, buy_change_30m, sell_change_30m, channel_text, sniper_percent, comp_score):
         try:
             #place holders
             new_unique_wallet_30m_change = new_unique_wallet_30m_change or 0
             trade_change_30m = trade_change_30m or 0
             buy_change_30m = buy_change_30m or 0
             sell_change_30m = sell_change_30m or 0
+            m5_vol = m5_vol or 0
             m30_vol = m30_vol or 0
             m30_vol_change = m30_vol_change or 0
             uniqueplaceholder = "Increase" if new_unique_wallet_30m_change > 0 else "Decrease"
@@ -75,47 +77,48 @@ class MultiAlert:
             buyplaceholder = "Increase" if buy_change_30m > 0 else "Decrease"
             sellplaceholder = "Increase" if sell_change_30m > 0 else "Decrease"
             sniperplaceholder = "❌" if sniper_percent >= 45 else "✅"
+            score_emoji = "🏆" if comp_score > 60 else "⚠️"
 
             embed = {
                 "title": "🚨 Multi Ape Alert",
                 "color": 0x00ff00,
                 "fields": [
                     {
-                        "name": f"{token_name}",
+                        "name": f"`{token_name}`",
                         "value": (
                             f"CA: `{ca}`\n"
-                            f"💰 Marketcap: ${marketcap:,.2f}\n"
-                            f"💧 Liquidity: ${liquidity:,.2f}\n"
-                            #f"📊 5m Volume: ${m5_vol:,.2f}\n"
-                            f"📊 30m Volume: ${m30_vol:,.2f} -- Change of: {m30_vol_change:.2f}%\n"
-                            f" Total Trades have {tradeplaceholder}d by {trade_change_30m:.2f}% in the last 30 min\n"
-                            f" Buys have {buyplaceholder}d by {buy_change_30m:.2f} in the last 30 min \n"
-                            f" Sells have {sellplaceholder}d by {sell_change_30m:.2f} in the last 30 min\n"
-                            f"⏰ Age: {token_age['value']} {token_age['unit']}\n" 
+                            f"💰 Marketcap: $`{marketcap:,.2f}`\n"
+                            f"💧 Liquidity: $`{liquidity:,.2f}`\n"
+                            f"📊 5m Volume: $`{m5_vol:,.2f}`\n"
+                            f"📊 30m Volume: $`{m30_vol:,.2f}` -- Change of: {m30_vol_change:.2f}%\n"
+                            f" `Total Trades have {tradeplaceholder}d by {trade_change_30m:.2f}% in the last 30 min`\n"
+                            f" `Buys have {buyplaceholder}d by {buy_change_30m:.2f} in the last 30 min `\n"
+                            f" `Sells have {sellplaceholder}d by {sell_change_30m:.2f} in the last 30 min`\n"
+                            f"⏰ `Age`: {token_age['value']} {token_age['unit']}\n" 
                         ),
                         "inline": False
                     },
                     {
                         "name": "🔍 Server Activity",
                         "value": (
-                            f"SWT Activity: ca has {swt_count} mentions ({swt_buys:.2f} SOL Buys, {swt_sells:.2f} SOL sells)\n"
-                            f"Fresh Activity: ca has {fresh_count} mentions ({fresh_buys:.2f} buys, {fresh_sells:.2f} sells)\n"
+                            f"SWT Activity: token has `{swt_count}` mentions (`{swt_buys:.2f}` SOL Buys, `{swt_sells:.2f}` SOL sells)\n"
+                            f"Fresh Activity: ca has `{fresh_count}` mentions (`{fresh_buys:.2f}` SOL buys, `{fresh_sells:.2f}` SOL sells)\n"
                         ),
                         "inline": False
                     },
                     {
-                        "name": f"{token_name} aped by wallets in:",
+                        "name": f"`Token aped by wallets in:`",
                         "value": f"{channel_text}",
                         "inline": False
                     },
                     {
                         "name": "📊 Holder Analysis",
                         "value": (
-                            f"👥 Total Holders: {holder_count}\n"
-                            f"📊 Top 10 Hold: {top_10_holding_percentage:.2f}%\n"
-                            f"⚠️ Holders >5%: {holders_over_5}\n"
-                            f"👨‍💼 Dev Holding: {dev_holding_percentage:.2f}%\n"
-                            f" {new_unique_wallets_30m} New Unique Wallets in 30min. {uniqueplaceholder} of {new_unique_wallet_30m_change}%"
+                            f"👥 Total Holders: `{holder_count}`\n"
+                            f"📊 Top 10 Hold: `{top_10_holding_percentage:.2f}`%\n"
+                            f"⚠️ Holders >5%: `{holders_over_5}`\n"
+                            f"👨‍💼 Dev Holding: `{dev_holding_percentage:.2f}`%\n"
+                            f" `{new_unique_wallets_30m} Total Unique Wallets in last 30 min. {uniqueplaceholder} of {new_unique_wallet_30m_change:.2f}`%"
                         ),
                         "inline": False
                     },
@@ -138,7 +141,7 @@ class MultiAlert:
                 wallet_analysis = ""
                 for wallet_address, data in wallet_data.items():
                     wallet_analysis += (
-                        f"**Wallet {wallet_address[:8]}**...\n"
+                        f"`Wallet {wallet_address[:8]}`...\n"
                         f"💰 Holding: {data['holding_percentage']:.2f}%\n"
                         f"📈 PNL: {data['pnl']:.4f} SOL\n"
                         f"🎯 Tokens Traded: {data['tokens_traded']}\n"
@@ -148,7 +151,7 @@ class MultiAlert:
                     )
                 if wallet_analysis:
                     embed["fields"].append({
-                        "name": "Top Wallet Recent Trade Report",
+                        "name": "Top 3 Wallets Latest Trade Report",
                         "value": wallet_analysis[:1024],
                         "inline": False
                     })
@@ -177,6 +180,16 @@ class MultiAlert:
             embed["fields"].append({
                 "name": "Links",
                 "value": links,
+                "inline": False
+            })
+            embed["fields"].append({
+                "name": "",
+                "value": f"`{ca}`",
+                "inline": False
+            })
+            embed["fields"].append({
+                "name": "Final Composite Score",
+                "value": f"{score_emoji}{comp_score:.2f}%",
                 "inline": False
             })
 
@@ -273,19 +286,107 @@ class MultiAlert:
         except Exception as e:
             print(f"Failed to send webhook: {str(e)}")
 
-    async def score_webhook(self, ca):
+    async def score_webhook(
+        self,
+        token_name: str,
+        ca: str,
+        # Holder Score Components
+        holder_total: float,
+        holder_age_confluence: float,
+        holder_security: float,
+        holder_wallet_analysis: float,
+        # Tokenomic Score Components
+        tokenomic_total: float,
+        tokenomic_vol_liq: float,
+        tokenomic_30m_vol: float,
+        tokenomic_5m_vol: float,
+        tokenomic_trade_confluence: float,
+        tokenomic_buy_pressure: float,
+        tokenomic_wallet_growth: float,
+        # Trust Score Components
+        trust_total: float,
+        trust_bs_confluence: float,
+        trust_age_count: float,
+        trust_security: float,
+        trust_activity: float,
+        trust_social: float,
+        # Final Calculations
+        total_before_penalties: float,
+        penalties: float,
+        final_score: float
+
+    ):
+        total_holder_percentage = (holder_total / 30) * 100 
+        total_tokenomic_percentage = (tokenomic_total / 40) * 100
+        total_trust_percentage = (trust_total / 30) * 100
         try:
             data = {
-
+                "embeds": [
+                    {
+                        "title": f"Composite Score Report for {token_name}",
+                        "description": f"CA: `{ca}`",
+                        "color": await self.get_score_color(final_score),  # Helper method to determine color based on score
+                        "fields": [
+                            {
+                                "name": "🏆 Final Score",
+                                "value": f"**{final_score:.2f}/100**\nBefore Penalties: {total_before_penalties:.2f}%\nPenalties: -{penalties:.2f}%",
+                                "inline": False
+                            },
+                            {
+                                "name": f"👥 Holder Score ({total_holder_percentage:.2f}%)",
+                                "value": f"Total: **{holder_total:.2f}/30**\n" + 
+                                    f"• Age Holder Count Relation: {holder_age_confluence:.2f}/10\n" +
+                                    f"• Security: {holder_security:.2f}/10\n" +
+                                    f"• Wallet Analysis: {holder_wallet_analysis:.2f}/10",
+                                "inline": True
+                            },
+                            {
+                                "name": f"📊 Tokenomic Score ({total_tokenomic_percentage:.2f}%)",
+                                "value": f"Total: **{tokenomic_total:.2f}/40**\n" +
+                                    f"• Vol & MC/Liq Relations: {tokenomic_vol_liq:.2f}/8\n" +
+                                    f"• 30m Vol: {tokenomic_30m_vol:.2f}/4\n" +
+                                    f"• 5m Vol: {tokenomic_5m_vol:.2f}/6\n" +
+                                    f"• Trade Confluence: {tokenomic_trade_confluence:.2f}/6\n" +
+                                    f"• Buy Pressure: {tokenomic_buy_pressure:.2f}/6\n" +
+                                    f"• Wallet Growth: {tokenomic_wallet_growth:.2f}/6",
+                                "inline": True
+                            },
+                            {
+                                "name": f"🔒 Trust Score ({total_trust_percentage:.2f}%)",
+                                "value": f"Total: **{trust_total:.2f}/30**\n" +
+                                    f"• BS Confluence: {trust_bs_confluence:.2f}/5\n" +
+                                    f"• Age/Count: {trust_age_count:.2f}/6\n" +
+                                    f"• Security: {trust_security:.2f}/5\n" +
+                                    f"• Activity: {trust_activity:.2f}/5\n" +
+                                    f"• Social: {trust_social:.2f}/4",
+                                "inline": True
+                            },
+                        ],
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                ]
             }
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(SCORE_WEBHOOK, json=data) as response:
                     if response.status == 204:
-                        print(f"Sent Score Report Aler")
+                        print(f"Sent Score Report Alert for {token_name}")
                     else:
-                        print(response.status)
+                        print(f"Webhook failed with status {response.status}")
+
         except Exception as e:
             print(f"Failed to send Score Report Webhook: {str(e)}")
+    
+    async def get_score_color(self, score: float) -> int:
+        """Helper method to determine embed color based on score"""
+        if score >= 80:
+            return 0x00FF00  # Green
+        elif score >= 65:
+            return 0xFFFF00  # Yellow
+        elif score >= 50:
+            return 0xFFA500  # Orange
+        else:
+            return 0xFF0000  # Red
 
 class ScoreReportWebhook:
     def __init__(self):

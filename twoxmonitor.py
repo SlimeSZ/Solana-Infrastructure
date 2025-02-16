@@ -64,7 +64,7 @@ class TwoXChecker:
                 if ca not in self.original_mcs:
                     self.original_mcs[ca] = current_mc
                     print(f"Starting to monitor {token_name}")
-                    print(f"Initial MC: ${current_mc:,.2f}")
+                    #print(f"Initial MC: ${current_mc:,.2f}")
                 else:
                     original_mc = self.original_mcs[ca]
                     if original_mc > 0:

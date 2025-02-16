@@ -178,7 +178,7 @@ class HolderScore:  # 30% of total score
         return final_score, metrics
             
 
-class TokenomicScore:  # 40% of total score
+class TokenomicScore:
     def __init__(self):
         self.MAX_SCORE = 40.0
         self.VOLUME_LIQUIDITY_MAX = 8.0
@@ -186,7 +186,6 @@ class TokenomicScore:  # 40% of total score
         self.TOKEN_M5_MAX = 6.0
         self.BUY_TRADE_MAX = 6.0
         self.BUYING_PRESSURE_MAX = 6.0
-        self.SERVER_WALLET_CLUSTER_MAX = 4.0
         self.WALLET_GROWTH_MAX = 6.0
         self.age_conv = TokenAgeConvert()
 
@@ -209,35 +208,43 @@ class TokenomicScore:  # 40% of total score
     ):
         try:
             age_in_minutes = self.age_conv.convert_token_age_to_minutes(token_age)
-            scores = {
-                'volume_marketcap_liquidity_confluence': await self.evaluate_volume_liquidity(m30_vol, liquidity, marketcap),  
-                'm30_age_volume_confluence': await self.tokenage_volume_confluence_30m(age_in_minutes, m30_vol_change),
-                'm5_age_volume_confluence': await self.tokenage_volume_confluence_5m(age_in_minutes, m5_vol),
-                'total_trades_buy_confluence': await self.buy_total_trade_confluence(total_trade_change, buys_change), 
-                'buying_pressure': await self.evaluate_buying_pressure(buys_change, sells_change, holder_count), 
-                'wallet_growth': await self.evaluate_wallet_growth(
-                    total_unique_wallets_30m, total_unique_wallets_1h,
-                    unique_wallet_change_30m, unique_wallet_change_1h,
-                    holder_count
-                )  
-            }
+            
+            # Calculate all individual scores
+            volume_liquidity_score = await self.evaluate_volume_liquidity(m30_vol, liquidity, marketcap)
+            m30_volume_score = await self.tokenage_volume_confluence_30m(age_in_minutes, m30_vol_change)
+            m5_volume_score = await self.tokenage_volume_confluence_5m(age_in_minutes, m5_vol)
+            buy_trade_score = await self.buy_total_trade_confluence(total_trade_change, buys_change)
+            buying_pressure_score = await self.evaluate_buying_pressure(buys_change, sells_change, holder_count)
+            wallet_growth_score = await self.evaluate_wallet_growth(
+                total_unique_wallets_30m,
+                total_unique_wallets_1h,
+                unique_wallet_change_30m,
+                unique_wallet_change_1h,
+                holder_count
+            )
+
+            # Normalize scores
             normalized_scores = {
-                'volume_marketcap_liquidity_confluence': (scores['volume_marketcap_liquidity_confluence'] / 10) * self.VOLUME_LIQUIDITY_MAX,
-                'm30_age_volume_confluence': (scores['age_volume_confluence'] / 10) * self.TOKEN_VOLUME_MAX,
-                'm5_age_volume_confluence': (scores['m5_age_volume_confluence'] / 10) * self.TOKEN_M5_MAX,
-                'total_trades_buy_confluence': (scores['total_trades_buy_confluence'] / 10) * self.BUY_TRADE_MAX,
-                'buying_pressure': (scores['buying_pressure'] / 10) * self.BUYING_PRESSURE_MAX,
-                'wallet_growth': (scores['wallet_growth'] / 10) * self.WALLET_GROWTH_MAX
+                'volume_marketcap_liquidity_confluence': (volume_liquidity_score / 10) * self.VOLUME_LIQUIDITY_MAX,
+                'm30_age_volume_confluence': (m30_volume_score / 10) * self.TOKEN_VOLUME_MAX,
+                'm5_age_volume_confluence': (m5_volume_score / 10) * self.TOKEN_M5_MAX,
+                'total_trades_buy_confluence': (buy_trade_score / 10) * self.BUY_TRADE_MAX,
+                'buying_pressure': (buying_pressure_score / 10) * self.BUYING_PRESSURE_MAX,
+                'wallet_growth': (wallet_growth_score / 10) * self.WALLET_GROWTH_MAX
             }
 
-            total_sscore = sum(normalized_scores.values())
-            total_score = min(total_sscore, self.MAX_SCORE)
+            # Calculate total score
+            total_score = sum(normalized_scores.values())
+            total_score = min(total_score, self.MAX_SCORE)
+            
+            # Add total score to the breakdown
             normalized_scores['total_score'] = total_score
+
             return total_score, normalized_scores
 
         except Exception as e:
             print(f"Error in tokenomic score calculation: {str(e)}")
-            return 0
+            return 0, {}  # Return empty dict as breakdown in case of error
     
     async def wallet_cluster_evaluation(self, channel_wallet_data: Dict) -> Tuple[float, Dict]:
         try:
@@ -991,7 +998,7 @@ class PenalizeScore:
 
 
 
-
+"""
 # Helper function to create dummy wallet data
 def create_dummy_wallet_data(performance_type: str = "good") -> Dict:
     if performance_type == "good":
@@ -1314,3 +1321,4 @@ if __name__ == "__main__":
                 print("Error calculating scores")
 
     asyncio.run(run_test())
+"""
