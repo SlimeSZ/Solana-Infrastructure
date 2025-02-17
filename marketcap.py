@@ -58,9 +58,25 @@ class MarketcapFetcher:
             supply = await self.get_token_supply(ca)
             price = await self.get_token_price(ca)
             mc = price * supply
-            print(f"MC: {mc}")
+            #print(f"MC: {mc}")
 
             return mc
         except Exception as e:
             print(F"Error calculating fetching data: {e}")
             raise
+
+"""
+class Main:
+    def __init__(self):
+        self.rpc = MarketcapFetcher()
+        self.ca = "Efv4e49G79dh7bcKukFNjWiwbjqhLu13oW3c9eZ2pump"
+    
+    async def run(self):
+        data = await self.rpc.get_token_supply(self.ca)
+        if data:
+            print(data)
+
+if __name__ == "__main__":
+    main = Main()
+    asyncio.run(main.run())
+"""
