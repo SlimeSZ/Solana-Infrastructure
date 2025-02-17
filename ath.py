@@ -1,109 +1,31 @@
-#if x score reached, trigger moralis ap once per token to fetch all time high, (need to pass supply as well), call sol rpc to return both supply & marketcap at once
-#record ATH as well as current marketcap, if x% drop down into the orderblock, start scanning for large buys, else scan mc in intervals until drop into ob achieved
-#listen to large buys this is key, need to get better data fetching for this aspect
-import requests
 import asyncio
 import aiohttp
-from marketcap import MarketcapFetcher
-from env import MORALIS_API_KEY, BIRDEYE_API_KEY
-from datetime import datetime, timedelta
+import requests
+from env import SOLANA_TRACKER_API_KEY
 
 class ATH:
     def __init__(self):
-        self.time_frame = "1min"
-        self.sol_rpc = MarketcapFetcher()  
-
-    async def _get_bd_data(self, ca):
+        pass
+    async def get_ath(self, ca):
         try:
-            bd_url = f"https://public-api.birdeye.so/defi/token_overview?address={ca}"
+            url = f"https://data.solanatracker.io/tokens/{ca}/ath"
             headers = {
-                "accept": "application/json",
-                "x-chain": "solana",
-                "X-API-KEY": BIRDEYE_API_KEY
+                'X-API-KEY': SOLANA_TRACKER_API_KEY
             }
             async with aiohttp.ClientSession() as session:
-                async with session.get(bd_url, headers=headers) as response:
+                async with session.get(url, headers=headers) as response:
                     response.raise_for_status()
                     data = await response.json()
-                    
-                    if not data or 'data' not in data:
-                        print("No data in Birdeye response")
+                    if not data:
+                        print(f"Failed to get data")
                         return None
-                    
-                    supply = data['data'].get('circulatingSupply')
-                    if not supply:
-                        print("No supply data found in Birdeye response")
-                        return None
-                    
-                    print(f"BD Supply: {float(supply):.2f}")    
-                    return float(supply)
-                    
+                    ath = data.get('highest_market_cap', 0)
+                    if not ath:
+                        print(f"Error extracing ath: {response.status}")
+                    return ath
         except Exception as e:
-            print(f"Birdeye API Error: {str(e)}")
-            print(f"Full response data: {data if 'data' in locals() else 'No data received'}")
+            print(str(e))
+            import traceback
+            traceback.print_exc()
             return None
-
-    async def calculate_all_time_high(self, ca, pair_address):
-        try:
-            url = f"https://solana-gateway.moralis.io/token/mainnet/pairs/{pair_address}/ohlcv"
-            params = {
-                "timeframe": "1min",  
-                "currency": "usd",
-                "fromDate": "2024-11-25",
-                "toDate": "2025-11-26",
-                "limit": 50
-            }
-            headers = {
-                "Accept": "application/json",
-                "X-API-Key": MORALIS_API_KEY
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, params=params) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-                    
-                    prices = data['result']  # The result is directly an array of price data
-                    if not prices:
-                        print("No price data available")
-                        return None
-                        
-                    highs = [price['high'] for price in prices if 'high' in price]
-                    if not highs:
-                        print("No high prices found")
-                        return None
-                        
-                    max_high = max(highs)
-                    
-                    token_supply = await self.sol_rpc.get_token_supply(ca)
-                    if not token_supply:
-                        token_supply = await self._get_bd_data(ca)
-                        
-                    if not token_supply:
-                        print("Could not fetch token supply")
-                        return None
-                        
-                    print(f"Supply: {token_supply}")
-                    return max_high * token_supply
-
-        except Exception as e:
-            print(f"Error calculating ATH: {str(e)}")
-            return None
-
-class Main:
-    def __init__(self):
-        self.ath = ATH()
-        self.ca = "Efv4e49G79dh7bcKukFNjWiwbjqhLu13oW3c9eZ2pump"
-        self.pair_address = "AU3fL58rk8fHDL2XFeL2K2L4KEc7q4FXfp7Uk4eWPqHQ"
-
-    async def run(self):
-        data = await self.ath.calculate_all_time_high(ca=self.ca, pair_address=self.pair_address)
-        if data:
-            print(f"ATH is: {data:.2f}")
-        else:
-            print("Failed to calculate ATH")
         
-
-if __name__ == "__main__":
-    main = Main()
-    asyncio.run(main.run())
