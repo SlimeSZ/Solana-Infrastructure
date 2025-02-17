@@ -3,6 +3,7 @@ import aiohttp
 import requests
 import json
 from typing import Dict, Any, Tuple
+from env import BIRDEYE_API_KEY
 
 class MarketcapFetcher:
     def __init__(self, rpc_endpoint: str = "https://api.mainnet-beta.solana.com"):
@@ -52,11 +53,35 @@ class MarketcapFetcher:
         except (requests.RequestException, ValueError) as e:
             print(f"Fatal error fetching gecko token price data: {e}")
             raise
+    
+    async def backup_token_price(self, ca):
+        url = f"https://public-api.birdeye.so/defi/v3/token/market-data?address={ca}"
+        headers = {
+            "accept": "application/json",
+        "x-chain": "solana",
+        "X-API-KEY": BIRDEYE_API_KEY
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    data = await response.json()
+                    if not data:
+                        return None
+                    token_data = data.get('data', {})
+                    price = token_data.get('price', 0)
+                    if not price:
+                        print(f"Unable to get price")
+                        return None
+                    print(f"Price: ${price:.2f}")
+            return price
+        except Exception as e:
+            print(f"Error as : {str(e)}")
+
 
     async def calculate_marketcap(self, ca: str) -> Dict[str, Any]:
         try:
             supply = await self.get_token_supply(ca)
-            price = await self.get_token_price(ca)
+            price = await self.backup_token_price(ca)
             mc = price * supply
             #print(f"MC: {mc}")
 
@@ -65,18 +90,16 @@ class MarketcapFetcher:
             print(F"Error calculating fetching data: {e}")
             raise
 
-"""
 class Main:
     def __init__(self):
         self.rpc = MarketcapFetcher()
-        self.ca = "Efv4e49G79dh7bcKukFNjWiwbjqhLu13oW3c9eZ2pump"
+        self.ca = "2oUmyeXZ9bpUyCxTqyhoiq79TvCQ5famLQTBa3FEpump"
     
     async def run(self):
-        data = await self.rpc.get_token_supply(self.ca)
+        data = await self.rpc.calculate_marketcap(self.ca)
         if data:
             print(data)
 
 if __name__ == "__main__":
     main = Main()
     asyncio.run(main.run())
-"""

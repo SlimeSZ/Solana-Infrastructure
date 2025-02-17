@@ -5,7 +5,7 @@ from marketcap import MarketcapFetcher
 from env import MORALIS_API_KEY, BIRDEYE_API_KEY
 from datetime import datetime, timedelta
 
-class ATH:
+class BATH:
     def __init__(self):
         self.time_frame = "1min"
         self.sol_rpc = MarketcapFetcher()  
