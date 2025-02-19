@@ -72,7 +72,6 @@ class MarketcapFetcher:
                     if not price:
                         print(f"Unable to get price")
                         return None
-                    print(f"Price: ${price:.2f}")
             return price
         except Exception as e:
             print(f"Error as : {str(e)}")

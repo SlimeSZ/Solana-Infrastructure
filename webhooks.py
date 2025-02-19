@@ -4,7 +4,7 @@ import aiohttp
 from env import ALEF_ALERT_WEBHOOK
 import discord
 from alefalerts import MessageSender 
-from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, TOKEN_SCORE_WEBHOOK, SCORE_WEBHOOK
+from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, SCORE_WEBHOOK, TRADE_WEBHOOK
 import csv
 import io
 from datetime import datetime
@@ -490,3 +490,64 @@ class ScoreReportWebhook:
             print(f"Error sending score report: {str(e)}")
             import traceback
             traceback.print_exc()
+
+class TradeWebhook:
+    def __init__(self):
+        self.TRADE_WEBHOOK = TRADE_WEBHOOK  # Add your webhook URL
+        
+    def get_profit_color(self, profit_percentage):
+        if profit_percentage >= 50:
+            return 0x00ff00  # Green
+        elif profit_percentage > 0:
+            return 0xffff00  # Yellow
+        else:
+            return 0xff0000  # Red
+            
+    async def send_trade_result(
+        self,
+        token_name: str,
+        ca: str,
+        entry_mc: float,
+        exit_mc: float,
+        profit_percentage: float,
+        trade_duration: str,
+        reason: str
+    ):
+        try:
+            data = {
+                "embeds": [
+                    {
+                        "title": f"Trade Result for {token_name}",
+                        "description": f"Contract: `{ca}`",
+                        "color": self.get_profit_color(profit_percentage),
+                        "fields": [
+                            {
+                                "name": "💰 Trade Summary",
+                                "value": f"**Profit/Loss: {profit_percentage:.2f}%**\nDuration: {trade_duration}",
+                                "inline": False
+                            },
+                            {
+                                "name": "📊 Entry/Exit Details",
+                                "value": f"Entry MC: ${entry_mc:,.2f}\nExit MC: ${exit_mc:,.2f}",
+                                "inline": True
+                            },
+                            {
+                                "name": "📝 Exit Reason",
+                                "value": reason,
+                                "inline": True
+                            }
+                        ],
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                ]
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(self.TRADE_WEBHOOK, json=data) as response:
+                    if response.status == 204:
+                        print(f"Sent Trade Result Alert for {token_name}")
+                    else:
+                        print(f"Trade webhook failed with status {response.status}")
+
+        except Exception as e:
+            print(f"Failed to send Trade Result Webhook: {str(e)}")
