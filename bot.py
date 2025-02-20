@@ -21,6 +21,7 @@ from scoring import HolderScore, TokenomicScore, TrustScore, PenalizeScore
 from marketcap import MarketcapFetcher
 from bdmetadata import BuySellTradeUniqueData, Tokenomics
 from twoxmonitor import TwoXChecker
+#from x import Twitter
 from webhooks import AlefAlertWebhook, MultiAlert 
 
 intents = discord.Intents.all()
@@ -44,6 +45,7 @@ class ScrapeAD:
         self.slime_alert = MessageSender()
         self.rickbot_webhook = AlefAlertWebhook()  
         self.ma_webhooks = MultiAlert()      
+        #self.x = Twitter()
         self.get_top_holders = HolderAmount()
         #scoring imports
         self.holderscore = HolderScore()
@@ -819,10 +821,17 @@ class ScrapeAD:
                     final_score=final_score
                 )
 
+                """
+                #Twitter Analysis
                 if final_score >= 75:
                     print(f"Running Twitter Analysis for: {ca}")
-                    
+                    #extract twit user for twitter processing
+                    if twitter:
+                        username = twitter.split("/")[-1]
+                        print(f"\nRunning Searchbar Analysis for: {ca} as well as token account analysis for @{username}")
+                """
                 
+                #OB Detection
 
 
 
