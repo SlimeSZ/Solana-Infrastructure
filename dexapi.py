@@ -69,6 +69,7 @@ class DexScreenerAPI:
                         self.token_name = pair.get('baseToken').get('name')
                         
                         self.pool_address = pair.get('pairAddress', '')
+                        print(f"Pair Add: {self.pool_address}")
                         self.pair_created_at = pair.get('pairCreatedAt')
                         found_pair = True
                         #get mc
@@ -114,6 +115,8 @@ class DexScreenerAPI:
                                 self.has_x = True
                                 self.x_link = social.get('url', 'No Twitter Link')
                         self.token_dex_url = pair.get('url', '')
+                        
+                        break
                 
                 return {
                     'token_name': self.token_name,
@@ -133,14 +136,13 @@ class DexScreenerAPI:
         except Exception as e:
             print(f"[ERROR] Error in fetching Data from Dex for {ca[:8]}...: \n{str(e)}")
 
-"""
+
 async def main():
     async with aiohttp.ClientSession() as session:
         dex = DexScreenerAPI()
-        ca = "J3VgUHqxKoaXJYyQduEqdM7CnVJRinn7838h18C9pump"
-        result = await dex.fetch_token_data_from_dex(session, ca)
+        ca = "HEZ6KcNNUKaWvUCBEe4BtfoeDHEHPkCHY9JaDNqrpump"
+        result = await dex.fetch_token_data_from_dex(ca)
         print(result)
 
 if __name__ == "__main__":
     asyncio.run(main())
-"""
