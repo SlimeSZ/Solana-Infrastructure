@@ -4,10 +4,11 @@ import aiohttp
 from env import ALEF_ALERT_WEBHOOK
 import discord
 from alefalerts import MessageSender 
-from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, SCORE_WEBHOOK, TRADE_WEBHOOK
+from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, SCORE_WEBHOOK, TRADE_WEBHOOK, LARGE_BUY_WEBHOOK
 import csv
 import io
 from datetime import datetime
+import logging
 
 class AlefAlertWebhook:
     def __init__(self):
@@ -551,3 +552,114 @@ class TradeWebhook:
 
         except Exception as e:
             print(f"Failed to send Trade Result Webhook: {str(e)}")
+
+    async def send_trade_webhook(self, webhook_url, result, new_metrics, new_buyers_with_pnl):
+        """
+        Format and send trade data to Discord webhook
+        """
+        try:
+            print(f"Attempting to send webhook to {webhook_url}")
+            
+            # Calculate total buys and sells
+            total_buys = result['metrics']['buy_metrics']['count']
+            total_sells = result['metrics']['sell_metrics']['count']
+            total_buy_sol = result['metrics']['buy_metrics']['total_sol']
+            total_sell_sol = result['metrics']['sell_metrics']['total_sol']
+            
+            # Build message with proper formatting
+            message = [
+                "🚨 **Trade Scanner Alert** 🚨",
+                f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                "",
+                "📊 **Current Statistics**",
+                f"• Total Trades: `{result['metrics']['total_trades']}`",
+                f"• Net SOL Flow: `{result['metrics']['sol_net_flow']:.2f} SOL`",
+                f"• New Trades: `{new_metrics['total_trades']}`",
+                f"• Total Buys: `{total_buys}` ({total_buy_sol:.2f} SOL)",
+                f"• Total Sells: `{total_sells}` ({total_sell_sol:.2f} SOL)",
+                ""
+            ]
+
+            # Add large buys section if any
+            if new_metrics['large_buys'] > 0 and new_buyers_with_pnl:
+                message.append("🔵 **New Large Buys**")
+                for buy_data in new_buyers_with_pnl:
+                    buy_info = [
+                        f"• Wallet: `{buy_data['wallet'][:8]}...`",
+                        f"  Amount: `{buy_data['amount_sol']:.2f} SOL (${buy_data['amount_usd']:.2f})`"
+                    ]
+                    
+                    if 'pnl_data' in buy_data and buy_data['pnl_data']:
+                        pnl = buy_data['pnl_data']
+                        buy_info.extend([
+                            f"  PNL: `{pnl['last_100_tx_pnl']:.2f} SOL`",
+                            f"  W/L: `{pnl['trades_won']}/{pnl['trades_loss']}`",
+                            f"  Tokens Traded: `{pnl['tokens_traded']}`",
+                            f"  Avg Entry: `{pnl['average_entry_per_trade']:.2f} SOL`",
+                            ""
+                        ])
+                    message.extend(buy_info)
+            else:
+                message.append("🔵 No large buys detected")
+                message.append("")
+
+            # Add large sells section if any
+            if new_metrics['large_sells'] > 0:
+                message.append("🔴 **New Large Sells**")
+                for sell in result['wallet_analysis']['large_trades']['large_sellers'][-new_metrics['large_sells']:]:
+                    message.extend([
+                        f"• Wallet: `{sell['wallet'][:8]}...`",
+                        f"  Amount: `{sell['amount_sol']:.2f} SOL (${sell['amount_usd']:.2f})`",
+                        ""
+                    ])
+            else:
+                message.append("🔴 No large sells detected")
+                message.append("")
+
+            # Add top 5 buyers section
+            if result['wallet_analysis'].get('top_5_buyers'):
+                message.append("📊 **Top 5 Buyers**")
+                for buy in result['wallet_analysis']['top_5_buyers']:
+                    message.extend([
+                        f"• Wallet: `{buy['wallet'][:8]}...`",
+                        f"  Total Amount: `{buy['buy_sol']:.2f} SOL (${buy['buy_usd']:.2f})`"
+                    ])
+                    
+                    # Add holding status if available
+                    if result.get('top_buyers_analysis'):
+                        buyer_analysis = next((b for b in result['top_buyers_analysis'] if b['wallet'] == buy['wallet']), None)
+                        if buyer_analysis:
+                            status = buyer_analysis['status']
+                            current_holding = buyer_analysis['current_holding']
+                            current_value = buyer_analysis['current_value_usd']
+                            message.append(f"  Status: `{status}` | Current Holdings: `${current_value:.2f}`")
+                    message.append("")  # Add empty line after each wallet
+
+            # Join all parts with newlines
+            formatted_message = "\n".join(message)
+            
+            # Print formatted message for debugging
+            print("Formatted webhook message:")
+            print(formatted_message)
+
+            # Send webhook
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(webhook_url, json={"content": formatted_message}) as response:
+                        if response.status == 204:
+                            print("Successfully sent webhook")
+                            return True
+                        else:
+                            response_text = await response.text()
+                            print(f"Webhook failed with status {response.status}")
+                            print(f"Response: {response_text}")
+                            return False
+                except Exception as post_error:
+                    print(f"Error posting webhook: {str(post_error)}")
+                    return False
+
+        except Exception as e:
+            print(f"Error preparing webhook: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False

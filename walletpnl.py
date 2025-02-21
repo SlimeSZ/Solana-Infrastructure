@@ -18,23 +18,29 @@ class WAlletPNL:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers) as response:
-                    response.raise_for_status()
-                    return await response.json()
+                    if response.status == 200:
+                        data = await response.json()
+                        if data and isinstance(data, dict):
+                            return data
+                        print(f"Invalid response data format: {data}")
+                    else:
+                        print(f"Bad status code: {response.status}")
+                    return None
         except Exception as e:
-            print(str(e))
-            import traceback
-            traceback.print_exc()
+            print(f"Error in get_tx_history: {str(e)}")
             return None
     
     async def process_tx_history(self, wallet_address):
         try:
             tx_history = await self.get_tx_history(wallet_address)
-            if not tx_history:
-                return
+            if not tx_history or not isinstance(tx_history, dict):
+                print(f"No valid tx history for wallet: {wallet_address}")
+                return {}
             
             data = tx_history.get('data', {}).get('solana', [])
             if not data:
-                return
+                print(f"No solana data in tx history for wallet: {wallet_address}")
+                return {}
             
             tx_data = defaultdict(list)
 
@@ -76,42 +82,46 @@ class WAlletPNL:
                         }
                         tx_data[ca].append(token_info)
 
-                        """
-                        print(f"{"-" * 30}\nTx: {hash}")
-                        print(f"Type: {'Buy' if is_buy else 'Sell'}")
-                        print(f"Sol Amount: {sol_amount}")
-                        print(f"Token Amount: {token_amount}")
-                        print(f"Timestamp: {tx.get('blockTime')}")
-                        print(f"{"-" * 30}")
-                        """
-
+            print(f"Processed {len(tx_data)} tokens for wallet {wallet_address[:8]}...")
             return tx_data
+
         except Exception as e:
-            print(str(e))
-            import traceback
-            traceback.print_exc()
-            return None
+            print(f"Error in process_tx_history: {str(e)}")
+            return {}
         
     async def calculate_pnl(self, wallet_address):
         try:
             tx_data = await self.process_tx_history(wallet_address)
             if not tx_data:
-                return
+                print(f"No transaction data for wallet: {wallet_address[:8]}")
+                return {
+                    'last_100_tx_pnl': 0,
+                    'tokens_traded': 0,
+                    'trades_won': 0,
+                    'trades_loss': 0,
+                    'average_entry_per_trade': 0
+                }
                 
             total_tokens = 0
             total_wallet_pnl = 0
             total_wins = 0
             total_losses = 0
-            ca_order = []  
-
+            total_trades = 0
             total_sol_spent = 0
             
             # Get raw response to determine CA order
             raw_response = await self.get_tx_history(wallet_address)
+            if not raw_response:
+                print(f"No raw transaction history for wallet: {wallet_address[:8]}")
+                return None
+                
             raw_txs = raw_response.get('data', {}).get('solana', [])
+            if not raw_txs:
+                print(f"No solana transactions in raw history for wallet: {wallet_address[:8]}")
+                return None
 
-            
             # Extract CAs in order of first appearance
+            ca_order = []
             for tx in raw_txs:
                 balance_changes = tx.get('balanceChange', [])
                 for change in balance_changes:
@@ -124,54 +134,27 @@ class WAlletPNL:
             for ca in ca_order:
                 if ca not in tx_data:
                     continue
-                total_tokens += 1
                     
+                total_tokens += 1
                 txs = tx_data[ca]
-                total_sol_spent = 0
-                total_sol_returned = 0
-                total_trades = 0
                 
-                #print(f"\nToken CA: {ca}\n{'*' * 30}")
-                
-                for tx in txs:  # Use original order from response
+                for tx in txs:
                     if tx['tx_type'] == 'Buy':
                         total_sol_spent += tx['sol_amount']
-                        total_sol_spent += tx['sol_amount']
-                    else:
-                        total_sol_returned += tx['sol_amount']
+                    else:  # Sell
+                        total_wallet_pnl += tx['sol_amount']  # Add the SOL received from selling
                     total_trades += 1
-                    
-                    """
-                    print(f"Transaction: {tx['hash']}")
-                    print(f"Type: {tx['tx_type']}")
-                    print(f"SOL Amount: {tx['sol_amount']:.4f}")
-                    print(f"Token Amount: {tx['token_amount']:.4f}")
-                    print(f"Timestamp: {tx['timestamp']}")
-                    print("-" * 30)
-                    """
                 
-                token_pnl = total_sol_returned - total_sol_spent
-                total_wallet_pnl += token_pnl
-
+                # Calculate if this token was profitable
+                token_pnl = sum(tx['sol_amount'] if tx['tx_type'] == 'Sell' else -tx['sol_amount'] for tx in txs)
                 if token_pnl > 0:
                     total_wins += 1
                 else:
                     total_losses += 1
             
             avg_sol_entry = total_sol_spent / total_trades if total_trades > 0 else 0
-            """
-                print(f"\nToken Summary:")
-                print(f"Total SOL Spent: {total_sol_spent:.4f}")
-                print(f"Total SOL Returned: {total_sol_returned:.4f}")
-                print(f"Token PNL: {token_pnl:.4f} SOL")
-                print(f"Total Trades: {total_trades}")
-                print("=" * 50)
-
-            print(F"Total Trades Took (SHOWING UP-TO LAST 100): {total_tokens}")
-            print(f"Trades won: {total_wins}")
-            print(f"Trades lost: {total_losses}")
-            """
-                
+            
+            print(f"Calculated PNL for {wallet_address[:8]}: {total_wallet_pnl:.4f} SOL")
             return {
                 'last_100_tx_pnl': total_wallet_pnl,
                 'tokens_traded': total_tokens,
@@ -181,24 +164,22 @@ class WAlletPNL:
             }   
         
         except Exception as e:
-            print(f"Error in calculate_pnl: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            print(f"Error in calculate_pnl for {wallet_address[:8]}: {str(e)}")
+            return None
                 
-"""
+
 class Main:
     def __init__(self):
-        self.w = WalletPNL()
+        self.w = WAlletPNL()
 
     async def run(self):
-        await self.w.calculate_pnl(wallet_address="wallet_address_here")
-        
-        #if data:
-            #print(data)
+        data = await self.w.calculate_pnl(wallet_address="4ET2AazzGBwZ5sRsQWoAFRFJPosRN3d4XkutTP3LZBtu")   
+        if data:
+            print(data)
 
 if __name__ == "__main__":
     main = Main()
     asyncio.run(main.run())
-"""
+
         
         
