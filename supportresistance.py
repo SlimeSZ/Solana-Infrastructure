@@ -438,7 +438,7 @@ class SupportResistance:
             print(str(e))
             return None
         
-    async def _set_timeframe(self, age_minutes):
+    async def _set_timeframe(self, pair_address, age_minutes):
         """
         Set appropriate timeframe based on token age and try different timeframes until data is found
         Returns the first successful data fetch
@@ -447,15 +447,6 @@ class SupportResistance:
             for tf in self.short_timeframes:  # ["1min", "30s"]
                 print(f"\nTrying timeframe: {tf}")
                 self.timeframe = tf
-                
-                # Try to fetch data with this timeframe
-                dex_data = await self.dex.fetch_token_data_from_dex(self.ca)
-                if not dex_data:
-                    continue
-                    
-                pair_address = dex_data.get('pool_address')
-                if not pair_address:
-                    continue
                     
                 data = await self.ohlcv.fetch(timeframe=tf, pair_address=pair_address)
                 if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
@@ -470,14 +461,7 @@ class SupportResistance:
             for tf in self.longer_timeframes:  # ["5min", "10min", "30min"]
                 print(f"\nTrying timeframe: {tf}")
                 self.timeframe = tf
-                
-                dex_data = await self.dex.fetch_token_data_from_dex(self.ca)
-                if not dex_data:
-                    continue
                     
-                pair_address = dex_data.get('pool_address')
-                if not pair_address:
-                    continue
                     
                 data = await self.ohlcv.fetch(timeframe=tf, pair_address=pair_address)
                 if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
@@ -492,7 +476,7 @@ class SupportResistance:
         return None
         
 
-    async def get_sr_zones(self, ca, age_minutes):
+    async def get_sr_zones(self, token_name, ca, age_minutes):
         try:
             self.ca =  ca
             data = await self._set_timeframe(age_minutes)
@@ -535,7 +519,7 @@ class SupportResistance:
                 'sr_levels': levels,
                 'volume_supports': volume_support_zones,
                 'volume_resistances': volume_resistance_zones
-            }, ca)
+            }, token_name, ca)
 
             return {
                 'sr_levels': levels,

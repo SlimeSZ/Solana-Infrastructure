@@ -25,7 +25,7 @@ class OrderBlock:
         self.short_timeframes = ["1min", "30s", "10s", "1s"]
         self.longer_timeframes = ["5min", "10min", "30min", "1h", "1min"]
 
-    async def get_data(self, ca, age_minutes=81):
+    async def get_data(self, pair_address, ca, age_minutes=81):
         """Get OHLCV data using appropriate timeframe"""
         try:
             if not ca:
@@ -33,7 +33,7 @@ class OrderBlock:
                 return None
 
 
-            data = await self._set_timeframe(age_minutes)
+            data = await self._set_timeframe(pair_address, age_minutes)
             return data
 
         except Exception as e:
@@ -143,7 +143,7 @@ class OrderBlock:
             traceback.print_exc()
             return None
         
-    async def _set_timeframe(self, age_minutes):
+    async def _set_timeframe(self, pair_address, age_minutes):
         """
         Set timeframe and try different ones if OB not found.
         Returns OHLCV data from first successful timeframe that finds OBs.
@@ -158,16 +158,6 @@ class OrderBlock:
                 print(f"\nAttempting timeframe: {tf}")
                 self.timeframe = tf
                 
-                # Try to fetch data with this timeframe
-                dex_data = await self.d.fetch_token_data_from_dex(self.ca)
-                if not dex_data:
-                    print(f"No DEX data for {tf}, trying next timeframe...")
-                    continue
-                    
-                pair_address = dex_data.get('pool_address')
-                if not pair_address:
-                    print(f"No pair address for {tf}, trying next timeframe...")
-                    continue
                     
                 # Get OHLCV data
                 data = await self.o.fetch(timeframe=tf, pair_address=pair_address)
@@ -195,12 +185,12 @@ class OrderBlock:
             return None
 
 
-    async def run(self):
+    async def run(self, pair_address, token_name):
         """Main loop combining OB updates and entry monitoring"""
         #print(f"\nStarting Order Block strategy for {self.ca}")
         #print("Initial order block scan...")
         # Do initial scan right away
-        await self.update_order_blocks()
+        await self.update_order_blocks(pair_address, token_name)
         
         last_ob_update = datetime.now()
         update_interval = 180  # 3 minutes
@@ -211,7 +201,7 @@ class OrderBlock:
                 # Check if it's time to update order blocks
                 if (datetime.now() - last_ob_update).seconds >= update_interval:
                     print("\nTime to update order blocks...")
-                    await self.update_order_blocks()
+                    await self.update_order_blocks(pair_address, token_name)
                     last_ob_update = datetime.now()
                 
                 # Monitor entries if we have active order blocks
@@ -226,9 +216,9 @@ class OrderBlock:
                 print(f"Error in main loop: {str(e)}")
                 await asyncio.sleep(45)
         
-    async def update_order_blocks(self):
+    async def update_order_blocks(self, pair_address, token_name):
         """Scan for new order blocks and add to active list"""
-        data = await self.get_data(ca=self.ca)
+        data = await self.get_data(pair_address, ca=self.ca)
         if not data:
             return
             
@@ -247,9 +237,9 @@ class OrderBlock:
                 
             # Send webhook alert for new OBs
             webhook = TradeWebhook()
-            await webhook.send_ob_webhook(TRADE_WEBHOOK, result, ca=self.ca)  
+            await webhook.send_ob_webhook(TRADE_WEBHOOK, result, token_name, ca=self.ca)  
     
-    async def monitor_ob_entry(self, ca, pair_address, current_mc):
+    async def monitor_ob_entry(self, token_name, ca, pair_address, current_mc):
         """Check if current marketcap is in any active order block zones"""
         try:
             if not self.active_obs:

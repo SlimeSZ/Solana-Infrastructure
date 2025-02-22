@@ -17,11 +17,12 @@ from tokenage import TokenAge
 from alefalerts import MessageSender
 from topholders import HolderAmount
 from walletpnl import WAlletPNL
-from scoring import HolderScore, TokenomicScore, TrustScore, PenalizeScore
+from scoring import HolderScore, TokenomicScore, TrustScore, PenalizeScore, TokenAgeConvert
 from marketcap import MarketcapFetcher
 from bdmetadata import BuySellTradeUniqueData, Tokenomics
 from twoxmonitor import TwoXChecker
 #from x import Twitter
+from scanforentry import MarketcapMonitor
 from webhooks import AlefAlertWebhook, MultiAlert 
 
 intents = discord.Intents.all()
@@ -44,7 +45,8 @@ class ScrapeAD:
         self.token_age = TokenAge()
         self.slime_alert = MessageSender()
         self.rickbot_webhook = AlefAlertWebhook()  
-        self.ma_webhooks = MultiAlert()      
+        self.ma_webhooks = MultiAlert()
+        self.mc_monitor = MarketcapMonitor()
         #self.x = Twitter()
         self.get_top_holders = HolderAmount()
         #scoring imports
@@ -58,6 +60,7 @@ class ScrapeAD:
         self.bd_trade_data = BuySellTradeUniqueData()
         self.bd_tokenomic_data = Tokenomics()
         self.twox = TwoXChecker()
+        self.age_converter = TokenAgeConvert()
         
         #webhooks
         self.multi_alert_webhook = ""
@@ -380,7 +383,7 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "4gkEQvz7bHEJgMRRwzxPW1ShK2PLoX8a6ryFkXAKpump"
+            test_ca = "FiY4Diak9i73NAAmaghYDSSPz1QsxE8gtD4o8TWRpump"
             if ca == test_ca:
                 multialert_found = True
             """
@@ -820,7 +823,6 @@ class ScrapeAD:
                     penalties=penalties,
                     final_score=final_score
                 )
-
                 """
                 #Twitter Analysis
                 if final_score >= 75:
@@ -831,14 +833,6 @@ class ScrapeAD:
                         print(f"\nRunning Searchbar Analysis for: {ca} as well as token account analysis for @{username}")
                 """
                 
-                #OB Detection
-
-
-
-
-                            
-
-
                 await self.ma_webhooks.multialert_webhook(
                     token_name=token_name,
                     ca=ca,
@@ -878,7 +872,8 @@ class ScrapeAD:
                     sniper_percent=sniper_percent,
                     comp_score=final_score
                 )     
-
+                age_minutes = self.age_converter.convert_token_age_to_minutes(token_age)
+                await self.mc_monitor.monitor_marketcap(token_name, ca, pool_address, age_minutes)
 
 
 

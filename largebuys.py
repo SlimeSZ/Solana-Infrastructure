@@ -265,7 +265,7 @@ class Trade_300:
         return pd.DataFrame(holdings_data) if holdings_data else None
 
 
-async def scan_trades(pair_address, token_ca, scan_interval=60):
+async def scan_trades(pair_address, token_name, token_ca, scan_interval=60):
     trader = Trade_300()
     w = WAlletPNL()
     webhook = TradeWebhook()

@@ -21,14 +21,14 @@ class MarketcapMonitor:
         self.sr_last_update = None
         self.sr_update_interval = 1800  # 30 minutes
 
-    async def initialize(self, ca, pair_address, age_minutes):
+    async def initialize(self, token_name, ca, pair_address, age_minutes):
         """Initialize all components concurrently"""
         print("\n=== Initializing Market Monitor ===")
         
         # Start concurrent initialization
         init_tasks = [
-            self.update_sr_levels(ca, age_minutes, initial=True),
-            self.ob.update_order_blocks(),
+            self.update_sr_levels(token_name, ca, age_minutes, initial=True),
+            self.ob.update_order_blocks(pair_address, token_name),
             self.rpc.calculate_marketcap(ca)  # Get initial MC
         ]
         
@@ -49,13 +49,14 @@ class MarketcapMonitor:
                     initial_mc = result
 
         print("\n=== Initialization Results ===")
+        print(f"{token_name}")
         print(f"SR Levels: {'✅' if sr_success else '❌'}")
         print(f"Order Blocks: {'✅' if ob_success else '❌'}")
         print(f"Initial MC: {'✅' if initial_mc else '❌'} {f'${initial_mc:.2f}' if initial_mc else ''}")
         
         return sr_success or ob_success  # Continue if at least one system is working
 
-    async def update_sr_levels(self, ca, age_minutes, initial=False):
+    async def update_sr_levels(self, token_name, ca, age_minutes, initial=False):
         """Update support and resistance levels with optimized timeframe selection"""
         try:
             if initial:
@@ -65,12 +66,12 @@ class MarketcapMonitor:
                 
             # First try shorter timeframe for faster response
             self.sr.timeframe = "1min"
-            sr_result = await self.sr.get_sr_zones(ca, age_minutes)
+            sr_result = await self.sr.get_sr_zones(token_name, ca, age_minutes)
             
             if not sr_result and not initial:
                 # If update fails, try longer timeframe
                 self.sr.timeframe = "5min"
-                sr_result = await self.sr.get_sr_zones(ca, age_minutes)
+                sr_result = await self.sr.get_sr_zones(token_name, ca, age_minutes)
 
             if sr_result and 'sr_levels' in sr_result:
                 self.active_sr = sr_result['sr_levels']
@@ -84,7 +85,7 @@ class MarketcapMonitor:
             print(f"Error updating SR levels: {str(e)}")
             return False
 
-    async def monitor_marketcap(self, ca, pair_address, age_minutes=180):
+    async def monitor_marketcap(self, token_name, ca, pair_address, age_minutes=180):
         """Monitor marketcap for both support and OB entries"""
         try:
             print("\n=== Starting Market Monitor ===")
@@ -92,7 +93,7 @@ class MarketcapMonitor:
             self.sr.ca = ca
             
             # Initialize components
-            if not await self.initialize(ca, pair_address, age_minutes):
+            if not await self.initialize(token_name, ca, pair_address, age_minutes):
                 print("⚠️ Failed to initialize monitoring components")
                 return
             
@@ -124,7 +125,7 @@ class MarketcapMonitor:
                             
                         if (current_time - last_ob_update).seconds >= OB_UPDATE_INTERVAL:
                             print("\n🔍 Updating Order Blocks...")
-                            update_tasks.append(self.ob.update_order_blocks())
+                            update_tasks.append(self.ob.update_order_blocks(pair_address, token_name))
                             last_ob_update = current_time
                         
                         # Run updates concurrently if needed
@@ -161,7 +162,7 @@ class MarketcapMonitor:
                             print("No support level established yet")
 
                         # Order Block Check
-                        in_ob = await self.ob.monitor_ob_entry(ca, pair_address, current_mc)
+                        in_ob = await self.ob.monitor_ob_entry(token_name, ca, pair_address, current_mc)
                         if hasattr(self.ob, 'active_obs') and self.ob.active_obs:
                             ob_levels = [ob['bottom'] for ob in self.ob.active_obs]
                             if ob_levels:
@@ -183,7 +184,7 @@ class MarketcapMonitor:
                             print(f"Reason: {' + '.join(filter(None, ['Support' if in_support else '', 'OB' if in_ob else '']))}")
                             self.scan_iterations = 0
                             start_time = datetime.now()
-                            await self.start_trade_scanner(pair_address, ca)
+                            await self.start_trade_scanner(token_name, pair_address, ca)
                         elif self.monitoring:
                             if in_support or in_ob:
                                 self.scan_iterations += 1
@@ -211,10 +212,10 @@ class MarketcapMonitor:
             if self.trade_scanner_task:
                 await self.stop_trade_scanner()
 
-    async def start_trade_scanner(self, pair_address, token_ca):
+    async def start_trade_scanner(self, token_name, pair_address, token_ca):
         """Start the trade scanner if not already running"""
         if not self.trade_scanner_task or self.trade_scanner_task.done():
-            print("\n🔄 Starting trade scanner...")
+            print(f"\n🔄 Starting OB/SR scanner for: {token_name}")
             self.trade_scanner_task = asyncio.create_task(scan_trades(pair_address, token_ca))
             self.monitoring = True
 

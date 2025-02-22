@@ -614,7 +614,7 @@ class TradeWebhook:
             traceback.print_exc()
             return False
     
-    async def send_sr_webhook(self, webhook_url, sr_data, ca):
+    async def send_sr_webhook(self, webhook_url, sr_data, token_name, ca):
         """
         Format and send SR levels and volume zones to Discord webhook
         """
@@ -698,7 +698,7 @@ class TradeWebhook:
             traceback.print_exc()
             return False
 
-    async def send_ob_webhook(self, webhook_url, ob_data, ca):
+    async def send_ob_webhook(self, webhook_url, ob_data, token_name, ca):
         """
         Format and send Order Block alert to Discord webhook
         """
