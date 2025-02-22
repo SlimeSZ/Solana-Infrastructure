@@ -9,10 +9,11 @@ from basecg import CoinGeckoTerminal
 from datetime import datetime
 from collections import defaultdict
 import scipy.signal as signal
-from env import BIRDEYE_API_KEY
+from env import BIRDEYE_API_KEY, TRADE_WEBHOOK
 from webhooks import TradeWebhook
 from dexapi import DexScreenerAPI
 from backupohlcv import OHLCV
+from backupsupply import Supply
 #from scientificnotation import SN
 
 class SupportResistance:
@@ -20,13 +21,16 @@ class SupportResistance:
         self.rpc = MarketcapFetcher()
         self.ohlcv = OH()
         self.dex = DexScreenerAPI()
+        self.s = Supply()
+        self.ca = None
 
         self.data = None
-        self.timeframe = "1min"
+        self.timeframe = None
         self.backupohlcv = OHLCV()
-        self.ca = ""
         self.current_mc = None
         self.supply = None
+        self.short_timeframes = ["1min", "30s"]
+        self.longer_timeframes = ["5min", "10min", "30min"]
 
     #helper methods
     async def _set_supply(self, ca):
@@ -75,10 +79,10 @@ class SupportResistance:
                 print("Error: Invalid supply value")
                 return None
 
-            print("\nReceived data structure:")
-            print(f"Data type: {type(data)}")
-            print("Data keys:", data.keys() if isinstance(data, dict) else "Not a dictionary")
-            print("First few items:", data)
+            #print("\nReceived data structure:")
+            #print(f"Data type: {type(data)}")
+            #print("Data keys:", data.keys() if isinstance(data, dict) else "Not a dictionary")
+            #print("First few items:", data)
 
             if isinstance(data, dict):
                 if 'result' in data:
@@ -100,10 +104,10 @@ class SupportResistance:
                 print("Error: Empty DataFrame created")
                 return None
 
-            print("\nDataFrame info before processing:")
-            print(df.info())
-            print("\nFirst few rows:")
-            print(df.head())
+            #print("\nDataFrame info before processing:")
+            #print(df.info())
+            #print("\nFirst few rows:")
+            #print(df.head())
 
             required_columns = ['open', 'high', 'low', 'close', 'volume']
             rename_map = {
@@ -128,16 +132,16 @@ class SupportResistance:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
                         
                     if df[col].isna().any():
-                        print(f"Warning: NaN values found in {col} column")
+                        #print(f"Warning: NaN values found in {col} column")
                         df[col] = df[col].fillna(method='ffill').fillna(method='bfill')
                         
                     if df[col].iloc[0] is not None:
-                        print(f"First {col} value after conversion: {df[col].iloc[0]}")
+                        #print(f"First {col} value after conversion: {df[col].iloc[0]}")
                             
                         df[col] = df[col] * supply
-                        print(f"First {col} marketcap: {df[col].iloc[0]}")
+                        #print(f"First {col} marketcap: {df[col].iloc[0]}")
                     else:
-                        print(f"Error: First value in {col} is None")
+                        #print(f"Error: First value in {col} is None")
                         return None
                         
                 except Exception as e:
@@ -157,10 +161,8 @@ class SupportResistance:
             return None
 
     async def get_sr(self, data, ca):
-        """
-        Calculate support and resistance levels.
-        """
         try:
+            self.ca = ca
             if data is None:
                 print("Error: Input data is None")
                 return None
@@ -169,19 +171,35 @@ class SupportResistance:
                 print("Error: Contract address is empty")
                 return None
 
+            print("\n=== Getting Supply ===")
+            # Try RPC first
+            print("1. Attempting RPC supply fetch...")
             supply = await self.rpc.get_token_supply(ca)
+            
             if not supply:
-                print('Error getting supply')
-                return None
+                print('2. RPC supply failed, attempting backup supply...')
+                backup_supply = await self.s.supply(ca)
+                print(f"3. Backup supply result: {backup_supply}")
                 
+                if backup_supply:
+                    print("4. Using backup supply value")
+                    supply = backup_supply
+                else:
+                    print("5. Both supply fetches failed")
+                    return None
+            
+            print(f"6. Final supply value: {supply}")
             self.supply = supply
             await self._set_mc(ca)
 
-            #  
+            # Continue with rest of the method...
+
             df = await self._convert(data, supply)
             if df is None:
                 print("Error: Data conversion failed")
                 return None
+
+            # Rest of your existing code...
 
             # Continue only if we have valid DataFrame
             if not df.empty and all(col in df.columns for col in ['high', 'low']):
@@ -361,7 +379,15 @@ class SupportResistance:
     async def get_high_vol_zones(self, data, ca):
         try:
             supply = await self.rpc.get_token_supply(ca)
+            if not supply:
+                supply = await self.s.supply(ca)
+                if not supply:
+                    print(F"both supply fetches failed")
+                    return None
+            self.supply = supply
             df = await self._convert(data, supply)
+            if df is None:
+                return None
             #df = pd.DataFrame(data['result'])
             results = []
             #convert to pd to extract individual ohlcv data
@@ -411,30 +437,76 @@ class SupportResistance:
         except Exception as e:
             print(str(e))
             return None
+        
+    async def _set_timeframe(self, age_minutes):
+        """
+        Set appropriate timeframe based on token age and try different timeframes until data is found
+        Returns the first successful data fetch
+        """
+        if age_minutes < 60:  # Less than 1 hour old
+            for tf in self.short_timeframes:  # ["1min", "30s"]
+                print(f"\nTrying timeframe: {tf}")
+                self.timeframe = tf
+                
+                # Try to fetch data with this timeframe
+                dex_data = await self.dex.fetch_token_data_from_dex(self.ca)
+                if not dex_data:
+                    continue
+                    
+                pair_address = dex_data.get('pool_address')
+                if not pair_address:
+                    continue
+                    
+                data = await self.ohlcv.fetch(timeframe=tf, pair_address=pair_address)
+                if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
+                    print(f"Primary OHLCV fetch failed for {tf}, trying backup...")
+                    data = await self.backupohlcv.get(self.ca)
+                    
+                if isinstance(data, dict) and data:
+                    print(f"Successfully fetched data with timeframe: {tf}")
+                    return data
+                    
+        else:  # More than 1 hour old
+            for tf in self.longer_timeframes:  # ["5min", "10min", "30min"]
+                print(f"\nTrying timeframe: {tf}")
+                self.timeframe = tf
+                
+                dex_data = await self.dex.fetch_token_data_from_dex(self.ca)
+                if not dex_data:
+                    continue
+                    
+                pair_address = dex_data.get('pool_address')
+                if not pair_address:
+                    continue
+                    
+                data = await self.ohlcv.fetch(timeframe=tf, pair_address=pair_address)
+                if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
+                    print(f"Primary OHLCV fetch failed for {tf}, trying backup...")
+                    data = await self.backupohlcv.get(self.ca)
+                    
+                if isinstance(data, dict) and data:
+                    print(f"Successfully fetched data with timeframe: {tf}")
+                    return data
+                    
+        print("Failed to fetch data with all timeframe attempts")
+        return None
+        
 
-    async def get_sr_zones(self, ca):
+    async def get_sr_zones(self, ca, age_minutes):
         try:
-            """Remove dex data and pass frm bot.py"""
-            dex_data = await self.dex.fetch_token_data_from_dex(ca)
-            if not dex_data:
-                return 
-            pair_address = dex_data.get('pool_address')
-            if not pair_address:
-                return
-            data = await self.ohlcv.fetch(timeframe=self.timeframe, pair_address=pair_address)
-            if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
-                print("Primary OHLCV fetch failed, trying backup source...")
-                data = await self.backupohlcv.get(ca)
-            if not isinstance(data, dict):
-                return
+            self.ca = ca  # Set the contract address for use in _set_timeframe
+            data = await self._set_timeframe(age_minutes)
+            if not data:
+                print("Failed to get data with any timeframe")
+                return None
+                
             self.data = data
-            
-
-
 
             levels = await self.get_sr(data, ca)
             if not levels:
-                return
+                print("Failed to get SR levels")
+                return None
+                
             unique_ranges = await self.get_high_vol_zones(data, ca)
             
             support_zone = levels['support']
@@ -454,38 +526,16 @@ class SupportResistance:
                     volume_support_zones.append(range_data)
                 
                 # Check for resistance zones
-                if range_low > resistance_mean and (range_low / resistance_mean) < 1.3:  # Within 130% of resistance
+                if range_low > resistance_mean and (range_low / resistance_mean) < 1.3:
                     volume_resistance_zones.append(range_data)
 
-            print("\n=== Zone Analysis ===")
-            print(f"Main Support Zone: {support_mean:.8f}")
-            print(f"Main Resistance Zone: {resistance_mean:.8f}")
-            print(f"Volume-based support zones found: {len(volume_support_zones)}")
-            print(f"Volume-based resistance zones found: {len(volume_resistance_zones)}")
-
-            if volume_support_zones:
-                print("\nPotential Support Zones from Volume:")
-                for i, zone in enumerate(volume_support_zones, 1):
-                    print(f"\nSupport Zone #{i}")
-                    print(f"Range: {zone['low']:.8f} - {zone['high']:.8f}")
-                    print(f"Distance from main support: {((zone['high'] - support_mean) / support_mean) * 100:.2f}%")
-                    print(f"Volume: {zone['volume']:.2f}")
-
-            if volume_resistance_zones:
-                print("\nPotential Resistance Zones from Volume:")
-                for i, zone in enumerate(volume_resistance_zones, 1):
-                    print(f"\nResistance Zone #{i}")
-                    print(f"Range: {zone['low']:.8f} - {zone['high']:.8f}")
-                    print(f"Distance from main resistance: {((zone['low'] - resistance_mean) / resistance_mean) * 100:.2f}%")
-                    print(f"Volume: {zone['volume']:.2f}")
-            await self.monitor_entry(
-                {
-                    'sr_levels': levels,
-                    'volume_supports': volume_support_zones,
-                    'volume_resistances': volume_resistance_zones
-                }, 
-                ca
-            )
+            # Send webhook
+            webhook = TradeWebhook()
+            await webhook.send_sr_webhook(TRADE_WEBHOOK, {
+                'sr_levels': levels,
+                'volume_supports': volume_support_zones,
+                'volume_resistances': volume_resistance_zones
+            }, ca)
 
             return {
                 'sr_levels': levels,
@@ -499,96 +549,15 @@ class SupportResistance:
             traceback.print_exc()
             return None
 
-    async def monitor_entry(self, levels, ca):
-        try:
-            if not levels or not levels.get('sr_levels'):
-                print("No SR levels passed to monitor entry")
-                return
-                
-            sr_levels = levels['sr_levels']
-            final_resistance = sr_levels['resistance']
-            final_support = sr_levels['support']
-            
-            if not final_resistance or not final_support:
-                return
-            
-            resistance_mean = final_resistance['mean']
-            support_mean = final_support['mean']
-            
-            print(f"\n{'*' * 15}\nWatching for entry on: {ca}")
-            print(f"Target Entry: ${support_mean:.8f}")
-            #print(f"Target TP: ${(entry_mc * 1.5)}\n{'*' * 15}\n")
-
-            while True:
-                try:
-                    current_mc = await self.rpc.calculate_marketcap(ca)
-                    
-                    # Check if price broke above resistance - if so, reset and reanalyze
-                    if current_mc > resistance_mean * 1.1:
-                        print(f"\nPrice broke resistance! Current MC: ${current_mc:.8f}")
-                        print(f"Old Resistance: ${resistance_mean:.8f}")
-                        resistance_mean = current_mc * 1.1  # Set new resistance 10% above current price
-                        print(f"New Resistance: ${resistance_mean:.8f}")
-                        await asyncio.sleep(60)
-                    
-                    is_near_support = (support_mean * 0.85) <= current_mc <= (support_mean * 1.05)
-                    is_50_from_resistance = current_mc <= (resistance_mean * 0.5)
-                    
-                    if is_near_support or is_50_from_resistance:
-                        print(f"\nEntry Conditions met: Aped at ${current_mc:.8f}")
-                        reason = "Token Dipped to Support Level" if is_near_support else "Token Dipped 50% from Resistance"
-                        print(reason)
-                        
-                        entry_mc = current_mc
-                        entry_time = datetime.now()
-                        stop_loss = entry_mc * 0.5
-                        
-                        while True:
-                            current_mc = await self.rpc.calculate_marketcap(ca)
-                            current_profit = ((current_mc - entry_mc) / entry_mc) * 100
-                            duration = datetime.now() - entry_time
-                            
-                            print(f"\nCurrent MC: ${current_mc:.8f}")
-                            print(f"Entry MC: ${entry_mc:.8f}")
-                            print(f"Current Profit: {current_profit:.2f}%")
-                            
-                            # Check for take profit near resistance
-                            if current_mc >= resistance_mean * 0.9 or current_mc >= entry_mc * 1.5:
-                                print("\nProfit Target Reached!")
-                                print(f"Trade Duration: {duration}")
-                                print(f"Entry: ${entry_mc:.8f}")
-                                print(f"Exit: ${current_mc:.8f}")
-                                print(f"Profit: {current_profit:.2f}%")
-                                print(f"Reason: {reason}")
-                                return
-                                
-                            # Check stop loss
-                            if current_profit <= -50:
-                                print(f"\nStop Loss Triggered:")
-                                print(f"Loss: {current_profit:.2f}%")
-                                return
-                                
-                            await asyncio.sleep(45)
-                            
-                    await asyncio.sleep(45)
-                    
-                except Exception as e:
-                    print(f"Error in monitoring loop: {str(e)}")
-                    await asyncio.sleep(45)
-                    continue
-                    
-        except Exception as e:
-            print(f"Error in monitor_entry: {str(e)}")
-            return None
             
 class Main:
     def __init__(self):
         self.sr = SupportResistance()
-        self.ca = "B6Sq1kwndPPofx1JvazDFrhq7XRjU7SnLvUotamypump"
+        self.ca = "H18iABykJUtZuHPNKNyudUNZNx9WNcgxSd8uAbb8pump"
 
     async def run(self):
         try:
-            await self.sr.get_sr_zones(ca=self.ca)
+            await self.sr.get_sr_zones(ca=self.ca, age_minutes=180)
         except Exception as e:
             print(f"Error running main class: {str(e)}")
             import traceback

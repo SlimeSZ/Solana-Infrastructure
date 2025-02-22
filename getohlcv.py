@@ -37,3 +37,15 @@ class OH:
         supply = await self.supply.get_token_supply(ca)
         return supply
         
+
+class Main:
+    def __init__(self):
+        self.o = OH()
+        self.pair_address = "7nGr7xqRpHDJs9pFQzFAsMtVxNatvVfngJyDnfLekU7S"
+
+    async def run(self):
+        data = await self.o.fetch(timeframe="30s", pair_address=self.pair_address)
+        print(data)
+if __name__ == "__main__":
+    main = Main()
+    asyncio.run(main.run())

@@ -57,7 +57,7 @@ class Trade_300:
                             if not data.get('success'):
                                 logging.warning(f"API request unsuccessful for wallet {wallet_address}")
                                 return None
-                                
+                                 
                             token_data = data.get('data', {})
                             if not token_data:
                                 logging.warning(f"No token data found for wallet {wallet_address}")
@@ -274,6 +274,9 @@ async def scan_trades(pair_address, token_ca, scan_interval=60):
     # Initialize all tracking variables
     prev_hashes = set()
     prev_large_trades = set()
+    # Store PNL data for wallets we've already processed
+    wallet_pnl_cache = {}
+    
     prev_metrics = {
         'total_trades': 0,
         'buy_sol': 0,
@@ -317,50 +320,42 @@ async def scan_trades(pair_address, token_ca, scan_interval=60):
                 # Prepare data for webhook
                 new_buyers_with_pnl = []
                 
+                # Get unique wallets that need PNL calculation
+                unique_new_wallets = {buy['wallet'] for buy in result['wallet_analysis']['large_trades']['large_buyers']
+                                    if (buy['wallet'], buy['amount_sol']) in new_large_buys}
+                
                 # Process large buys
                 if new_large_buys:
                     print("\nProcessing New Large Buys...")
                     new_buyers = [buy for buy in result['wallet_analysis']['large_trades']['large_buyers']
                                 if (buy['wallet'], buy['amount_sol']) in new_large_buys]
                     
+                    # First, get PNL for any new unique wallets
+                    for wallet in unique_new_wallets:
+                        if wallet not in wallet_pnl_cache:
+                            try:
+                                print(f"\nGetting PNL for new wallet: {wallet[:8]}...")
+                                pnl_result = await w.calculate_pnl(wallet)
+                                if pnl_result:
+                                    print(f"Got PNL Result for {wallet[:8]}: {pnl_result}")
+                                    wallet_pnl_cache[wallet] = pnl_result
+                            except Exception as e:
+                                print(f"Error getting PNL for {wallet[:8]}: {str(e)}")
+                    
+                    # Then process all buys, using cached PNL data
                     for buy in new_buyers:
                         wallet = buy['wallet']
-                        print(f"\nProcessing wallet: {wallet[:8]}...")
+                        print(f"\nProcessing buy from: {wallet[:8]}...")
                         
-                        # Basic buy data
                         buy_data = {
                             'wallet': wallet,
                             'amount_sol': buy['amount_sol'],
                             'amount_usd': buy['amount_usd']
                         }
 
-                        try:
-                            # Debug prints for PNL calculation
-                            print(f"Fetching PNL data for {wallet[:8]}...")
-                            tx_history = await w.get_tx_history(wallet)
-                            if tx_history:
-                                print("Got transaction history")
-                                tx_data = await w.process_tx_history(wallet)
-                                if tx_data:
-                                    print("Processed transaction data")
-                                    pnl_result = await w.calculate_pnl(wallet)
-                                    if pnl_result:
-                                        print(f"Got PNL Result: {pnl_result}")
-                                        buy_data['pnl_data'] = {
-                                            'last_100_tx_pnl': pnl_result['last_100_tx_pnl'],
-                                            'trades_won': pnl_result['trades_won'],
-                                            'trades_loss': pnl_result['trades_loss'],
-                                            'tokens_traded': pnl_result['tokens_traded'],
-                                            'average_entry_per_trade': pnl_result['average_entry_per_trade']
-                                        }
-                                    else:
-                                        print("Failed to calculate PNL")
-                                else:
-                                    print("Failed to process transaction data")
-                            else:
-                                print("Failed to get transaction history")
-                        except Exception as e:
-                            print(f"Error processing PNL for {wallet[:8]}: {str(e)}")
+                        # Use cached PNL data if available
+                        if wallet in wallet_pnl_cache:
+                            buy_data['pnl_data'] = wallet_pnl_cache[wallet]
                         
                         new_buyers_with_pnl.append(buy_data)
                 
@@ -396,8 +391,8 @@ async def scan_trades(pair_address, token_ca, scan_interval=60):
             await asyncio.sleep(5)
 
 async def main():
-    pair_address = "FUcjBDJFuiY7n11VYBaST1TFyGPLFnpWQhsFpEUBCkmi"
-    token_ca = "CRyUdBon9op2c4xS3pMi6b455wcjkjtT7aCGP7v4pump"
+    pair_address = "HLSE6DEYYf9eHQwmW4j7R5auswc5sptkFPQCzB3kwvSa"
+    token_ca = "5hbWa39eYiwFdDconNwmTvhxz7tzCd4VsdMFmmpgpump"
     
     print("Starting trade scanner...")
     await scan_trades(pair_address, token_ca)

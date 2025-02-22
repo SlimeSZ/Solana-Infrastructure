@@ -504,54 +504,7 @@ class TradeWebhook:
         else:
             return 0xff0000  # Red
             
-    async def send_trade_result(
-        self,
-        token_name: str,
-        ca: str,
-        entry_mc: float,
-        exit_mc: float,
-        profit_percentage: float,
-        trade_duration: str,
-        reason: str
-    ):
-        try:
-            data = {
-                "embeds": [
-                    {
-                        "title": f"Trade Result for {token_name}",
-                        "description": f"Contract: `{ca}`",
-                        "color": self.get_profit_color(profit_percentage),
-                        "fields": [
-                            {
-                                "name": "💰 Trade Summary",
-                                "value": f"**Profit/Loss: {profit_percentage:.2f}%**\nDuration: {trade_duration}",
-                                "inline": False
-                            },
-                            {
-                                "name": "📊 Entry/Exit Details",
-                                "value": f"Entry MC: ${entry_mc:,.2f}\nExit MC: ${exit_mc:,.2f}",
-                                "inline": True
-                            },
-                            {
-                                "name": "📝 Exit Reason",
-                                "value": reason,
-                                "inline": True
-                            }
-                        ],
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                ]
-            }
-
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.TRADE_WEBHOOK, json=data) as response:
-                    if response.status == 204:
-                        print(f"Sent Trade Result Alert for {token_name}")
-                    else:
-                        print(f"Trade webhook failed with status {response.status}")
-
-        except Exception as e:
-            print(f"Failed to send Trade Result Webhook: {str(e)}")
+    
 
     async def send_trade_webhook(self, webhook_url, result, new_metrics, new_buyers_with_pnl):
         """
@@ -571,17 +524,17 @@ class TradeWebhook:
                 "🚨 **Trade Scanner Alert** 🚨",
                 f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
                 "",
-                "📊 **Current Statistics**",
+                "📊 **Trade Data since Token entered Orderblock**",
                 f"• Total Trades: `{result['metrics']['total_trades']}`",
                 f"• Net SOL Flow: `{result['metrics']['sol_net_flow']:.2f} SOL`",
                 f"• New Trades: `{new_metrics['total_trades']}`",
-                f"• Total Buys: `{total_buys}` ({total_buy_sol:.2f} SOL)",
-                f"• Total Sells: `{total_sells}` ({total_sell_sol:.2f} SOL)",
+                f"• New Buys: `{total_buys}` ({total_buy_sol:.2f} SOL)",
+                f"• New Sells: `{total_sells}` ({total_sell_sol:.2f} SOL)",
                 ""
             ]
 
             # Add large buys section if any
-            if new_metrics['large_buys'] > 0 and new_buyers_with_pnl:
+            if new_metrics['large_buys'] > 8 and new_buyers_with_pnl:
                 message.append("🔵 **New Large Buys**")
                 for buy_data in new_buyers_with_pnl:
                     buy_info = [
@@ -660,6 +613,140 @@ class TradeWebhook:
 
         except Exception as e:
             print(f"Error preparing webhook: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    async def send_sr_webhook(self, webhook_url, sr_data, ca):
+        """
+        Format and send SR levels and volume zones to Discord webhook
+        """
+        try:
+            print(f"Attempting to send SR webhook to {webhook_url}")
+            
+            sr_levels = sr_data['sr_levels']
+            volume_supports = sr_data['volume_supports']
+            
+            main_support = sr_levels['support']['mean']
+            main_resistance = sr_levels['resistance']['mean']
+            
+            # Build message with proper formatting
+            message = [
+                f"🎯 **Support | Resistance Levels for: `{ca}`** 🎯",
+                f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                "",
+                "📊 **Main Levels**",
+                f"• Support: `${main_support:.2f}`",
+                f"• Resistance: `${main_resistance:.2f}`",
+                f"• Support Distance to Resistance: `{((main_resistance - main_support) / main_support * 100):.2f}%`",
+                ""
+            ]
+
+            # Add volume-based support zones
+            if volume_supports:
+                valid_supports = [
+                    zone for zone in volume_supports 
+                    if abs((zone['high'] - main_support) / main_support) * 100 >= 10
+                ]
+                
+                if valid_supports:
+                    message.append("📈 **Volume Support Zones**")
+                    for i, zone in enumerate(valid_supports, 1):
+                        distance = ((zone['high'] - main_support) / main_support) * 100
+                        message.extend([
+                            f"• Zone #{i}:",
+                            f"  Range: `${zone['low']:.2f} - ${zone['high']:.2f}`",
+                            f"  Volume: `{zone['volume']:.2f}`",
+                            f"  Distance from Support: `{distance:.2f}%`",
+                            ""
+                        ])
+                else:
+                    message.append("📈 No significant volume support zones found")
+                    message.append("")
+
+            # Add strength indicators
+            if 'resistance_strength' in sr_levels and 'support_strength' in sr_levels:
+                message.extend([
+                    "💪 **Level Strength**",
+                    f"• Support Strength: `{sr_levels['support_strength']*100:.2f}%`",
+                    f"• Resistance Strength: `{sr_levels['resistance_strength']*100:.2f}%`",
+                    ""
+                ])
+
+            # Join all parts with newlines
+            formatted_message = "\n".join(message)
+            
+            # Print formatted message for debugging
+            print("Formatted SR webhook message:")
+            print(formatted_message)
+
+            # Send webhook
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(webhook_url, json={"content": formatted_message}) as response:
+                        if response.status == 204:
+                            print("Successfully sent SR webhook")
+                            return True
+                        else:
+                            response_text = await response.text()
+                            print(f"Webhook failed with status {response.status}")
+                            print(f"Response: {response_text}")
+                            return False
+                except Exception as post_error:
+                    print(f"Error posting webhook: {str(post_error)}")
+                    return False
+
+        except Exception as e:
+            print(f"Error preparing SR webhook: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    async def send_ob_webhook(self, webhook_url, ob_data, ca):
+        """
+        Format and send Order Block alert to Discord webhook
+        """
+        try:
+            print(f"Attempting to send OB webhook to {webhook_url}")
+            
+            message = [
+                f"🎯 **Order Block Detected for: {ca}!** 🎯",
+                f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                "",
+                "📊 **Details**"
+            ]
+
+            # Add OB information
+            for i in range(ob_data['ob_count']):
+                message.extend([
+                    f"• **Order Block #{i+1}**",
+                    f"  MC Range: `${ob_data['ob_bottom'][i]:.8f} - ${ob_data['ob_top'][i]:.8f}`",
+                    f"  Volume: `{ob_data['ob_volume'][i]:.2f}`",
+                    f"  Strength: `{ob_data['ob_strength'][i]:.2%}`",
+                    ""
+                ])
+
+            # Join all parts with newlines
+            formatted_message = "\n".join(message)
+            
+            # Send webhook
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(webhook_url, json={"content": formatted_message}) as response:
+                        if response.status == 204:
+                            print("Successfully sent OB webhook")
+                            return True
+                        else:
+                            response_text = await response.text()
+                            print(f"Webhook failed with status {response.status}")
+                            print(f"Response: {response_text}")
+                            return False
+                except Exception as post_error:
+                    print(f"Error posting webhook: {str(post_error)}")
+                    return False
+
+        except Exception as e:
+            print(f"Error preparing OB webhook: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
