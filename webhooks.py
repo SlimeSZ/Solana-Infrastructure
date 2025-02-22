@@ -506,7 +506,7 @@ class TradeWebhook:
             
     
 
-    async def send_trade_webhook(self, webhook_url, result, new_metrics, new_buyers_with_pnl):
+    async def send_trade_webhook(self, webhook_url, result, new_metrics, new_buyers_with_pnl, token_name, ca):
         """
         Format and send trade data to Discord webhook
         """
@@ -521,21 +521,18 @@ class TradeWebhook:
             
             # Build message with proper formatting
             message = [
-                "🚨 **Trade Scanner Alert** 🚨",
+                "```diff",  # Add this line
+                "- 🚨 **Listening for Transaction Data** 🚨",  # Modified line
+                f"**Token: {str(token_name)}** | `{ca}`",
                 f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                "```",  # Add this line
                 "",
-                "📊 **Trade Data since Token entered Orderblock**",
-                f"• Total Trades: `{result['metrics']['total_trades']}`",
-                f"• Net SOL Flow: `{result['metrics']['sol_net_flow']:.2f} SOL`",
-                f"• New Trades: `{new_metrics['total_trades']}`",
-                f"• New Buys: `{total_buys}` ({total_buy_sol:.2f} SOL)",
-                f"• New Sells: `{total_sells}` ({total_sell_sol:.2f} SOL)",
-                ""
+                "📊 **Trade Data since token entered Orderblock**"
             ]
 
             # Add large buys section if any
             if new_metrics['large_buys'] > 8 and new_buyers_with_pnl:
-                message.append("🔵 **New Large Buys**")
+                message.append("🟢 **New Large Buys**")
                 for buy_data in new_buyers_with_pnl:
                     buy_info = [
                         f"• Wallet: `{buy_data['wallet'][:8]}...`",
@@ -553,7 +550,7 @@ class TradeWebhook:
                         ])
                     message.extend(buy_info)
             else:
-                message.append("🔵 No large buys detected")
+                message.append("🟢 No new large buys detected")
                 message.append("")
 
             # Add large sells section if any
@@ -575,7 +572,7 @@ class TradeWebhook:
                 for buy in result['wallet_analysis']['top_5_buyers']:
                     message.extend([
                         f"• Wallet: `{buy['wallet'][:8]}...`",
-                        f"  Total Amount: `{buy['buy_sol']:.2f} SOL (${buy['buy_usd']:.2f})`"
+                        f"  Total Amount: `{buy['buy_sol']:.2f} SOL (${buy['buy_usd']:.2f})`",
                     ])
                     
                     # Add holding status if available
@@ -632,14 +629,13 @@ class TradeWebhook:
             
             # Build message with proper formatting
             message = [
-                f"🎯 **Support | Resistance Levels for: `{ca}`** 🎯",
+                "```ini",  # Add this line
+                f"[ 🎯 Support | Resistance Levels for: {str(token_name)} 🎯 ]",  # Modified line
+                f"CA: `{ca}`",
                 f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                "```",  # Add this line
                 "",
-                "📊 **Main Levels**",
-                f"• Support: `${main_support:.2f}`",
-                f"• Resistance: `${main_resistance:.2f}`",
-                f"• Support Distance to Resistance: `{((main_resistance - main_support) / main_support * 100):.2f}%`",
-                ""
+                "📊 **Main Levels**"
             ]
 
             # Add volume-based support zones
@@ -650,7 +646,7 @@ class TradeWebhook:
                 ]
                 
                 if valid_supports:
-                    message.append("📈 **Volume Support Zones**")
+                    message.append("📈 **Weaker Volume Based Support Zones**")
                     for i, zone in enumerate(valid_supports, 1):
                         distance = ((zone['high'] - main_support) / main_support) * 100
                         message.extend([
@@ -710,8 +706,11 @@ class TradeWebhook:
             print(f"Attempting to send OB webhook to {webhook_url}")
             
             message = [
-                f"🎯 **Order Block Detected for: {ca}!** 🎯",
+                "```diff",  # Add this line
+                "+ 🎯 **Order Block Detected for: " + str(token_name) + "** 🎯",  # Modified line
+                f"CA: `{ca}`",
                 f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                "```",  # Add this line
                 "",
                 "📊 **Details**"
             ]
@@ -720,9 +719,9 @@ class TradeWebhook:
             for i in range(ob_data['ob_count']):
                 message.extend([
                     f"• **Order Block #{i+1}**",
-                    f"  MC Range: `${ob_data['ob_bottom'][i]:.8f} - ${ob_data['ob_top'][i]:.8f}`",
-                    f"  Volume: `{ob_data['ob_volume'][i]:.2f}`",
-                    f"  Strength: `{ob_data['ob_strength'][i]:.2%}`",
+                    f"  MC Range: `${ob_data['ob_bottom'][i]:.2f} - ${ob_data['ob_top'][i]:.8f}`",
+                    f"  OB Volume: `{ob_data['ob_volume'][i]:.2f}`",
+                    f"  OB Strength: `{ob_data['ob_strength'][i]:.2%}`",
                     ""
                 ])
 

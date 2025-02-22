@@ -4,14 +4,212 @@ from supportresistance import SupportResistance
 from largebuys import scan_trades
 from webhooks import TradeWebhook
 from env import TRADE_WEBHOOK
+from ob import OrderBlock
+from datetime import datetime
 
 class MarketcapMonitor:
     def __init__(self):
         self.rpc = MarketcapFetcher()
         self.sr = SupportResistance()
+        self.ob = OrderBlock()
         self.webhook = TradeWebhook()
         self.monitoring = False
         self.trade_scanner_task = None
+        self.scan_iterations = 0
+        self.MAX_SCANS = 10
+        self.active_sr = None
+        self.sr_last_update = None
+        self.sr_update_interval = 1800  # 30 minutes
+
+    async def initialize(self, ca, pair_address, age_minutes):
+        """Initialize all components concurrently"""
+        print("\n=== Initializing Market Monitor ===")
+        
+        # Start concurrent initialization
+        init_tasks = [
+            self.update_sr_levels(ca, age_minutes, initial=True),
+            self.ob.update_order_blocks(),
+            self.rpc.calculate_marketcap(ca)  # Get initial MC
+        ]
+        
+        results = await asyncio.gather(*init_tasks, return_exceptions=True)
+        
+        # Process results
+        sr_success, ob_success, initial_mc = False, False, None
+        
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                print(f"Initialization task {i} failed: {str(result)}")
+            else:
+                if i == 0:  # SR levels
+                    sr_success = bool(result)
+                elif i == 1:  # OB update
+                    ob_success = bool(result)
+                else:  # Initial MC
+                    initial_mc = result
+
+        print("\n=== Initialization Results ===")
+        print(f"SR Levels: {'✅' if sr_success else '❌'}")
+        print(f"Order Blocks: {'✅' if ob_success else '❌'}")
+        print(f"Initial MC: {'✅' if initial_mc else '❌'} {f'${initial_mc:.2f}' if initial_mc else ''}")
+        
+        return sr_success or ob_success  # Continue if at least one system is working
+
+    async def update_sr_levels(self, ca, age_minutes, initial=False):
+        """Update support and resistance levels with optimized timeframe selection"""
+        try:
+            if initial:
+                print("\n📊 Initial SR level calculation...")
+            else:
+                print("\n📊 Updating SR levels...")
+                
+            # First try shorter timeframe for faster response
+            self.sr.timeframe = "1min"
+            sr_result = await self.sr.get_sr_zones(ca, age_minutes)
+            
+            if not sr_result and not initial:
+                # If update fails, try longer timeframe
+                self.sr.timeframe = "5min"
+                sr_result = await self.sr.get_sr_zones(ca, age_minutes)
+
+            if sr_result and 'sr_levels' in sr_result:
+                self.active_sr = sr_result['sr_levels']
+                self.sr_last_update = datetime.now()
+                print(f"Support level updated: ${sr_result['sr_levels']['support']['mean']:.2f}")
+                return True
+            else:
+                print("No valid SR levels found")
+                return False
+        except Exception as e:
+            print(f"Error updating SR levels: {str(e)}")
+            return False
+
+    async def monitor_marketcap(self, ca, pair_address, age_minutes=180):
+        """Monitor marketcap for both support and OB entries"""
+        try:
+            print("\n=== Starting Market Monitor ===")
+            self.ob.ca = ca
+            self.sr.ca = ca
+            
+            # Initialize components
+            if not await self.initialize(ca, pair_address, age_minutes):
+                print("⚠️ Failed to initialize monitoring components")
+                return
+            
+            monitoring_iteration = 0
+            start_time = None
+            last_ob_update = datetime.now()
+            last_mc_check = datetime.now()
+            
+            # Intervals (in seconds)
+            OB_UPDATE_INTERVAL = 180  # 3 minutes
+            MC_CHECK_INTERVAL = 60    # 1 minute
+            
+            while True:
+                try:
+                    current_time = datetime.now()
+                    
+                    # Only perform checks every minute
+                    if (current_time - last_mc_check).seconds >= MC_CHECK_INTERVAL:
+                        monitoring_iteration += 1
+                        print(f"\n=== Monitoring Iteration #{monitoring_iteration} ===")
+                        print(f"Time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                        last_mc_check = current_time
+
+                        # Concurrent updates for SR and OB when needed
+                        update_tasks = []
+                        
+                        if not self.sr_last_update or (current_time - self.sr_last_update).seconds >= self.sr_update_interval:
+                            update_tasks.append(self.update_sr_levels(ca, age_minutes))
+                            
+                        if (current_time - last_ob_update).seconds >= OB_UPDATE_INTERVAL:
+                            print("\n🔍 Updating Order Blocks...")
+                            update_tasks.append(self.ob.update_order_blocks())
+                            last_ob_update = current_time
+                        
+                        # Run updates concurrently if needed
+                        if update_tasks:
+                            await asyncio.gather(*update_tasks, return_exceptions=True)
+                        
+                        # Get current marketcap
+                        current_mc = await self.rpc.calculate_marketcap(ca)
+                        if not current_mc:
+                            print("❌ Failed to get current marketcap")
+                            await asyncio.sleep(MC_CHECK_INTERVAL)
+                            continue
+
+                        print(f"\n💰 Current MC: ${current_mc:.2f}")
+                        
+                        # Check zones and display status
+                        print("\n=== Zone Status ===")
+                        
+                        # Support Zone Check
+                        in_support = False
+                        if self.active_sr and self.active_sr['support']['mean']:
+                            support_mean = self.active_sr['support']['mean']
+                            in_support = abs(current_mc - support_mean) / support_mean <= 0.05
+                            distance_from_support = ((current_mc - support_mean) / support_mean) * 100
+                            print(f"Support Level: ${support_mean:.2f}")
+                            print(f"Support Distance: {distance_from_support:.2f}%")
+                            print(f"In Support Zone: {'✅' if in_support else '❌'}")
+                            
+                            if current_mc < (support_mean * 0.35):
+                                print("📉 MC dropped below 35% of support level!")
+                                await self.stop_trade_scanner()
+                                continue
+                        else:
+                            print("No support level established yet")
+
+                        # Order Block Check
+                        in_ob = await self.ob.monitor_ob_entry(ca, pair_address, current_mc)
+                        if hasattr(self.ob, 'active_obs') and self.ob.active_obs:
+                            ob_levels = [ob['bottom'] for ob in self.ob.active_obs]
+                            if ob_levels:
+                                min_ob = min(ob_levels)
+                                distance_from_ob = ((current_mc - min_ob) / min_ob) * 100
+                                print(f"OB Distance: {distance_from_ob:.2f}%")
+                                print(f"In OB Zone: {'✅' if in_ob else '❌'}")
+                                
+                                if current_mc < (min_ob * 0.35):
+                                    print("📉 MC dropped below 35% of lowest OB level!")
+                                    await self.stop_trade_scanner()
+                                    continue
+                        else:
+                            print("No active order blocks")
+
+                        # Handle trade scanning
+                        if (in_support or in_ob) and not self.monitoring:
+                            print("\n🎯 Zone entry detected!")
+                            print(f"Reason: {' + '.join(filter(None, ['Support' if in_support else '', 'OB' if in_ob else '']))}")
+                            self.scan_iterations = 0
+                            start_time = datetime.now()
+                            await self.start_trade_scanner(pair_address, ca)
+                        elif self.monitoring:
+                            if in_support or in_ob:
+                                self.scan_iterations += 1
+                                print(f"\n📊 Scan iteration {self.scan_iterations} of {self.MAX_SCANS}")
+                                
+                                if self.scan_iterations >= self.MAX_SCANS:
+                                    print("🔚 Reached maximum scan iterations...")
+                                    await self.stop_trade_scanner()
+                                    start_time = None
+                            else:
+                                print("\n📤 Exited all trading zones")
+                                await self.stop_trade_scanner()
+                                start_time = None
+
+                    await asyncio.sleep(MC_CHECK_INTERVAL)
+
+                except Exception as e:
+                    print(f"Error in monitoring loop: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    await asyncio.sleep(MC_CHECK_INTERVAL)
+
+        except Exception as e:
+            print(f"Fatal error in monitor_marketcap: {str(e)}")
+            if self.trade_scanner_task:
+                await self.stop_trade_scanner()
 
     async def start_trade_scanner(self, pair_address, token_ca):
         """Start the trade scanner if not already running"""
@@ -31,114 +229,20 @@ class MarketcapMonitor:
                 pass
             self.monitoring = False
 
-    def is_in_support_zone(self, current_mc, support_mean):
-        """Check if current marketcap is in support zone (±5% of support)"""
-        support_upper = support_mean * 1.05
-        support_lower = support_mean * 0.95
-        return support_lower <= current_mc <= support_upper
-
-    async def monitor_marketcap(self, ca, pair_address, age_minutes=180):
-        """Monitor marketcap and manage trade scanning"""
-        try:
-            # Initial SR scan with retries
-            print("\n📊 Getting initial SR levels...")
-            max_retries = 3
-            scan_iterations = 0  # Counter for scan iterations
-            MAX_SCANS = 10      # Maximum number of scans
-            
-            for attempt in range(max_retries):
-                try:
-                    sr_result = await self.sr.get_sr_zones(ca, age_minutes)
-                    if sr_result:
-                        break
-                    print(f"SR scan attempt {attempt + 1} failed, retrying...")
-                    await asyncio.sleep(5)
-                except Exception as e:
-                    print(f"Error in SR scan attempt {attempt + 1}: {str(e)}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(5)
-
-            if not sr_result:
-                print("All SR scan attempts failed, terminating...")
-                return
-            
-            support_mean = sr_result['sr_levels']['support']['mean']
-            print(f"\n📍 Support level set at: {support_mean:.2f}")
-            
-            was_in_support = False
-            
-            while True:
-                try:
-                    # Get current marketcap
-                    current_mc = await self.rpc.calculate_marketcap(ca)
-                    if not current_mc:
-                        print("Failed to get current marketcap, continuing monitoring...")
-                        await asyncio.sleep(60)
-                        continue
-
-                    print(f"\n💰 Current MC: {current_mc:.2f}")
-                    in_support = self.is_in_support_zone(current_mc, support_mean)
-
-                    if support_mean and current_mc:
-                        distance_percentage = ((current_mc - support_mean) / support_mean) * 100
-                        print(f"Distance from support: {distance_percentage:.2f}%")
-
-                    # Handle entering support zone
-                    if in_support and not was_in_support:
-                        print("\n🎯 Entered support zone!")
-                        scan_iterations = 0  # Reset counter when entering support zone
-                        
-                        await self.webhook.send_sr_webhook(TRADE_WEBHOOK, {
-                            'event': 'support_zone_entered',
-                            'current_mc': current_mc,
-                            'support_level': support_mean,
-                            'distance_percentage': distance_percentage
-                        }, ca)
-                        await self.start_trade_scanner(pair_address, ca)
-
-                    # Handle being in support zone
-                    elif in_support and was_in_support:
-                        scan_iterations += 1
-                        print(f"\n📊 Scan iteration {scan_iterations} of {MAX_SCANS}")
-                        
-                        if scan_iterations >= MAX_SCANS:
-                            print("\n🔚 Reached maximum scan iterations, stopping scanner...")
-                            await self.stop_trade_scanner()
-                            print("Scanner stopped. Terminating program.")
-                            return  # Exit the program
-
-                    # Handle leaving support zone
-                    elif not in_support and was_in_support:
-                        print("\n↗️ Left support zone")
-                        await self.webhook.send_sr_webhook(TRADE_WEBHOOK, {
-                            'event': 'support_zone_left',
-                            'current_mc': current_mc,
-                            'support_level': support_mean,
-                            'distance_percentage': distance_percentage
-                        }, ca)
-                        await self.stop_trade_scanner()
-
-                    was_in_support = in_support
-                    await asyncio.sleep(60)  # Check every minute
-
-                except Exception as e:
-                    print(f"Error in monitoring loop: {str(e)}")
-                    await asyncio.sleep(60)
-
-        except Exception as e:
-            print(f"Fatal error in monitor_marketcap: {str(e)}")
-            if self.trade_scanner_task:
-                await self.stop_trade_scanner()
-
 class Main:
     def __init__(self):
         self.monitor = MarketcapMonitor()
-        self.ca = "5hbWa39eYiwFdDconNwmTvhxz7tzCd4VsdMFmmpgpump"
-        self.pair = "HLSE6DEYYf9eHQwmW4j7R5auswc5sptkFPQCzB3kwvSa"  # Add your pair address
+        self.ca = None
+        self.pair = None
 
-    async def run(self):
+    async def run(self, ca, pair_address):
+        self.ca = ca
+        self.pair = pair_address
         await self.monitor.monitor_marketcap(self.ca, self.pair)
 
 if __name__ == "__main__":
     main = Main()
-    asyncio.run(main.run())
+    # Example usage:
+    ca = "FiY4Diak9i73NAAmaghYDSSPz1QsxE8gtD4o8TWRpump"
+    pair = "E1qJzWe8wwtT2c8zg6w6wLwWD4P5fe3ezNB7J8JJE8Go"
+    asyncio.run(main.run(ca, pair))

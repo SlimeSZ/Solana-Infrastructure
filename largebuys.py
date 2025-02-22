@@ -370,7 +370,7 @@ async def scan_trades(pair_address, token_ca, scan_interval=60):
                 
                 # Send webhook
                 print("\nSending webhook...")
-                await webhook.send_trade_webhook(LARGE_BUY_WEBHOOK, result, new_metrics, new_buyers_with_pnl)
+                await webhook.send_trade_webhook(LARGE_BUY_WEBHOOK, result, new_metrics, new_buyers_with_pnl, token_name, ca=token_ca)
                 
                 # Update tracking sets
                 prev_hashes = set(trader.hashes)
@@ -391,8 +391,8 @@ async def scan_trades(pair_address, token_ca, scan_interval=60):
             await asyncio.sleep(5)
 
 async def main():
-    pair_address = "HLSE6DEYYf9eHQwmW4j7R5auswc5sptkFPQCzB3kwvSa"
-    token_ca = "5hbWa39eYiwFdDconNwmTvhxz7tzCd4VsdMFmmpgpump"
+    pair_address = "E1qJzWe8wwtT2c8zg6w6wLwWD4P5fe3ezNB7J8JJE8Go"
+    token_ca = "E1qJzWe8wwtT2c8zg6w6wLwWD4P5fe3ezNB7J8JJE8Go"
     
     print("Starting trade scanner...")
     await scan_trades(pair_address, token_ca)

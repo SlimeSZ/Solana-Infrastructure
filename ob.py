@@ -19,44 +19,22 @@ class OrderBlock:
         self.pair_address = None
         self.rpc = MarketcapFetcher()
         self.timeframe = "1min"  # Default timeframe
-        self.ca = "5hbWa39eYiwFdDconNwmTvhxz7tzCd4VsdMFmmpgpump"
+        self.ca = "7vGQxnACKAogWbSE1uEjdPuEJ5trvqzYVzU2VW42pump"
         self.backup_supply = Supply()
         self.active_obs = []
-        self.timeframe_retries = ["1min", "30s", "5min"]
+        self.short_timeframes = ["1min", "30s", "10s", "1s"]
+        self.longer_timeframes = ["5min", "10min", "30min", "1h", "1min"]
 
-    async def get_data(self, ca):
+    async def get_data(self, ca, age_minutes=81):
+        """Get OHLCV data using appropriate timeframe"""
         try:
             if not ca:
                 print("Error: Contract address not provided")
                 return None
 
-            dex_data = await self.d.fetch_token_data_from_dex(ca=ca)
-            if not dex_data:
-                print("Error: Failed to fetch DEX data")
-                return None
 
-            self.pair_address = dex_data.get('pool_address')
-            if not self.pair_address:
-                print("Error: No pair address found")
-                return None
-
-            # Try each timeframe in sequence
-            for retry_count, timeframe in enumerate(self.timeframe_retries, 1):
-                print(f"\nAttempt {retry_count} with timeframe: {timeframe}")
-                data = await self.o.fetch(timeframe=timeframe, pair_address=self.pair_address)
-                
-                if isinstance(data, dict) and data:  # Valid data received
-                    print(f"Successfully fetched data with timeframe: {timeframe}")
-                    return data
-                else:
-                    print(f"No data received for timeframe: {timeframe}")
-                    if retry_count < len(self.timeframe_retries):
-                        print(f"Retrying with next timeframe...")
-                    else:
-                        print("All timeframe attempts exhausted")
-
-            print("Failed to fetch data with all timeframes")
-            return None
+            data = await self._set_timeframe(age_minutes)
+            return data
 
         except Exception as e:
             print(f"Error in get_data: {str(e)}")
@@ -164,6 +142,57 @@ class OrderBlock:
             import traceback
             traceback.print_exc()
             return None
+        
+    async def _set_timeframe(self, age_minutes):
+        """
+        Set timeframe and try different ones if OB not found.
+        Returns OHLCV data from first successful timeframe that finds OBs.
+        """
+        try:
+            timeframes_to_try = self.short_timeframes if age_minutes < 80 else self.longer_timeframes
+            
+            print(f"\n=== Trying timeframes for {age_minutes} min old token ===")
+            print(f"Available timeframes: {timeframes_to_try}")
+            
+            for tf in timeframes_to_try:
+                print(f"\nAttempting timeframe: {tf}")
+                self.timeframe = tf
+                
+                # Try to fetch data with this timeframe
+                dex_data = await self.d.fetch_token_data_from_dex(self.ca)
+                if not dex_data:
+                    print(f"No DEX data for {tf}, trying next timeframe...")
+                    continue
+                    
+                pair_address = dex_data.get('pool_address')
+                if not pair_address:
+                    print(f"No pair address for {tf}, trying next timeframe...")
+                    continue
+                    
+                # Get OHLCV data
+                data = await self.o.fetch(timeframe=tf, pair_address=pair_address)
+                if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
+                    print(f"Failed to get OHLCV")
+                    return None
+                    
+                if not isinstance(data, dict) or not data:
+                    print(f"No valid data for {tf}, trying next timeframe...")
+                    continue
+                    
+                # Try to find OBs with this data
+                result = await self.mark_ob(ca=self.ca, data=data)
+                if result and result.get('ob_count', 0) > 0:
+                    print(f"✅ Found {result['ob_count']} OBs using {tf} timeframe")
+                    return data
+                else:
+                    print(f"No OBs found with {tf}, trying next timeframe...")
+                    
+            print("❌ No OBs found with any timeframe")
+            return None
+
+        except Exception as e:
+            print(f"Error in _set_timeframe: {str(e)}")
+            return None
 
 
     async def run(self):
@@ -218,8 +247,43 @@ class OrderBlock:
                 
             # Send webhook alert for new OBs
             webhook = TradeWebhook()
-            await webhook.send_ob_webhook(TRADE_WEBHOOK, result, ca=self.ca)  # Make sure to import TRADE_WEBHOOK from your config
+            await webhook.send_ob_webhook(TRADE_WEBHOOK, result, ca=self.ca)  
+    
+    async def monitor_ob_entry(self, ca, pair_address, current_mc):
+        """Check if current marketcap is in any active order block zones"""
+        try:
+            if not self.active_obs:
+                return False
+                
+            for ob in self.active_obs:
+                ob_top = ob['top']
+                ob_bottom = ob['bottom']
+                
+                # Check if current MC is within OB range (give 2% buffer)
+                if ob_bottom * 0.98 <= current_mc <= ob_top * 1.02:
+                    print(f"\n🎯 Price entered Order Block!")
+                    print(f"OB Range: ${ob_bottom:.2f} - ${ob_top:.2f}")
+                    print(f"Current MC: ${current_mc:.2f}")
+                    print(f"OB Strength: {ob['strength']:.2%}")
+                    
+                    # Send webhook for OB entry
+                    webhook = TradeWebhook()
+                    await webhook.send_ob_webhook(TRADE_WEBHOOK, {
+                        'event': 'ob_zone_entered',
+                        'current_mc': current_mc,
+                        'ob_bottom': ob_bottom,
+                        'ob_top': ob_top,
+                        'ob_strength': ob['strength'],
+                        'volume': ob['volume']
+                    }, ca)
+                    
+                    return True
+                    
+            return False
 
+        except Exception as e:
+            print(f"Error in monitor_ob_entry: {str(e)}")
+            return False
 
 
         

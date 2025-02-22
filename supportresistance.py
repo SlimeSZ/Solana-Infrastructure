@@ -29,8 +29,8 @@ class SupportResistance:
         self.backupohlcv = OHLCV()
         self.current_mc = None
         self.supply = None
-        self.short_timeframes = ["1min", "30s"]
-        self.longer_timeframes = ["5min", "10min", "30min"]
+        self.short_timeframes = ["1min", "30s", "10s", "1s"]
+        self.longer_timeframes = ["5min", "10min", "30min", "1h"]
 
     #helper methods
     async def _set_supply(self, ca):
@@ -494,7 +494,7 @@ class SupportResistance:
 
     async def get_sr_zones(self, ca, age_minutes):
         try:
-            self.ca = ca  # Set the contract address for use in _set_timeframe
+            self.ca =  ca
             data = await self._set_timeframe(age_minutes)
             if not data:
                 print("Failed to get data with any timeframe")
@@ -553,7 +553,7 @@ class SupportResistance:
 class Main:
     def __init__(self):
         self.sr = SupportResistance()
-        self.ca = "H18iABykJUtZuHPNKNyudUNZNx9WNcgxSd8uAbb8pump"
+        self.ca = "3PtLfa2S8ccfCxDhKVxcJQrs2UXyY7dv1Qzovjq8pump"
 
     async def run(self):
         try:
