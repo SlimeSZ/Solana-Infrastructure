@@ -9,7 +9,7 @@ from basecg import CoinGeckoTerminal
 from datetime import datetime
 from collections import defaultdict
 import scipy.signal as signal
-from env import BIRDEYE_API_KEY, TRADE_WEBHOOK
+from env import BIRDEYE_API_KEY, SR_WEBHOOK
 from webhooks import TradeWebhook
 from dexapi import DexScreenerAPI
 from backupohlcv import OHLCV
@@ -476,10 +476,10 @@ class SupportResistance:
         return None
         
 
-    async def get_sr_zones(self, token_name, ca, age_minutes):
+    async def get_sr_zones(self, token_name, ca, pair_address, age_minutes):
         try:
             self.ca =  ca
-            data = await self._set_timeframe(age_minutes)
+            data = await self._set_timeframe(pair_address, age_minutes)
             if not data:
                 print("Failed to get data with any timeframe")
                 return None
@@ -515,7 +515,7 @@ class SupportResistance:
 
             # Send webhook
             webhook = TradeWebhook()
-            await webhook.send_sr_webhook(TRADE_WEBHOOK, {
+            await webhook.send_sr_webhook(SR_WEBHOOK, {
                 'sr_levels': levels,
                 'volume_supports': volume_support_zones,
                 'volume_resistances': volume_resistance_zones
@@ -534,21 +534,4 @@ class SupportResistance:
             return None
 
             
-class Main:
-    def __init__(self):
-        self.sr = SupportResistance()
-        self.ca = "3PtLfa2S8ccfCxDhKVxcJQrs2UXyY7dv1Qzovjq8pump"
-
-    async def run(self):
-        try:
-            await self.sr.get_sr_zones(ca=self.ca, age_minutes=180)
-        except Exception as e:
-            print(f"Error running main class: {str(e)}")
-            import traceback
-            traceback.print_exc()
-
-
-if __name__ == "__main__":
-    main = Main()
-    asyncio.run(main.run())
       

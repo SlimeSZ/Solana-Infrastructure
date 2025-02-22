@@ -4,7 +4,7 @@ import aiohttp
 from env import ALEF_ALERT_WEBHOOK
 import discord
 from alefalerts import MessageSender 
-from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, SCORE_WEBHOOK, TRADE_WEBHOOK, LARGE_BUY_WEBHOOK
+from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, SCORE_WEBHOOK, LARGE_BUY_WEBHOOK
 import csv
 import io
 from datetime import datetime
@@ -494,7 +494,7 @@ class ScoreReportWebhook:
 
 class TradeWebhook:
     def __init__(self):
-        self.TRADE_WEBHOOK = TRADE_WEBHOOK  # Add your webhook URL
+        pass
         
     def get_profit_color(self, profit_percentage):
         if profit_percentage >= 50:
@@ -615,9 +615,6 @@ class TradeWebhook:
             return False
     
     async def send_sr_webhook(self, webhook_url, sr_data, token_name, ca):
-        """
-        Format and send SR levels and volume zones to Discord webhook
-        """
         try:
             print(f"Attempting to send SR webhook to {webhook_url}")
             
@@ -629,13 +626,17 @@ class TradeWebhook:
             
             # Build message with proper formatting
             message = [
-                "```ini",  # Add this line
-                f"[ 🎯 Support | Resistance Levels for: {str(token_name)} 🎯 ]",  # Modified line
+                "```ini",
+                f"[ 🎯 Support | Resistance Levels for: {str(token_name)} 🎯 ]",
                 f"CA: `{ca}`",
                 f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                "```",  # Add this line
+                "```",
                 "",
-                "📊 **Main Levels**"
+                "📊 **Main Levels**",
+                f"• Main Support: `${main_support:.2f}`",  # Added main support
+                f"• Main Resistance: `${main_resistance:.2f}`",
+                f"Will listen for TX Data when price enters this range",  # Added main resistance
+                ""  # Empty line for spacing
             ]
 
             # Add volume-based support zones
@@ -668,6 +669,14 @@ class TradeWebhook:
                     f"• Resistance Strength: `{sr_levels['resistance_strength']*100:.2f}%`",
                     ""
                 ])
+
+            # Add support/resistance ranges
+            message.extend([
+                "📐 **Level Ranges**",
+                f"• Support Range: `${sr_levels['support']['range_low']:.2f} - ${sr_levels['support']['range_high']:.2f}`",
+                f"• Resistance Range: `${sr_levels['resistance']['range_low']:.2f} - ${sr_levels['resistance']['range_high']:.2f}`",
+                ""
+            ])
 
             # Join all parts with newlines
             formatted_message = "\n".join(message)
@@ -720,6 +729,7 @@ class TradeWebhook:
                 message.extend([
                     f"• **Order Block #{i+1}**",
                     f"  MC Range: `${ob_data['ob_bottom'][i]:.2f} - ${ob_data['ob_top'][i]:.8f}`",
+                    f"Will listen for TX Data when price enters this range",
                     f"  OB Volume: `{ob_data['ob_volume'][i]:.2f}`",
                     f"  OB Strength: `{ob_data['ob_strength'][i]:.2%}`",
                     ""

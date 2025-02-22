@@ -3,7 +3,6 @@ from marketcap import MarketcapFetcher
 from supportresistance import SupportResistance
 from largebuys import scan_trades
 from webhooks import TradeWebhook
-from env import TRADE_WEBHOOK
 from ob import OrderBlock
 from datetime import datetime
 
@@ -27,7 +26,7 @@ class MarketcapMonitor:
         
         # Start concurrent initialization
         init_tasks = [
-            self.update_sr_levels(token_name, ca, age_minutes, initial=True),
+            self.update_sr_levels(pair_address, token_name, ca, age_minutes, initial=True),
             self.ob.update_order_blocks(pair_address, token_name),
             self.rpc.calculate_marketcap(ca)  # Get initial MC
         ]
@@ -56,7 +55,7 @@ class MarketcapMonitor:
         
         return sr_success or ob_success  # Continue if at least one system is working
 
-    async def update_sr_levels(self, token_name, ca, age_minutes, initial=False):
+    async def update_sr_levels(self, pair_address, token_name, ca, age_minutes, initial=False):
         """Update support and resistance levels with optimized timeframe selection"""
         try:
             if initial:
@@ -66,7 +65,7 @@ class MarketcapMonitor:
                 
             # First try shorter timeframe for faster response
             self.sr.timeframe = "1min"
-            sr_result = await self.sr.get_sr_zones(token_name, ca, age_minutes)
+            sr_result = await self.sr.get_sr_zones(token_name, ca, pair_address, age_minutes)
             
             if not sr_result and not initial:
                 # If update fails, try longer timeframe
@@ -121,7 +120,7 @@ class MarketcapMonitor:
                         update_tasks = []
                         
                         if not self.sr_last_update or (current_time - self.sr_last_update).seconds >= self.sr_update_interval:
-                            update_tasks.append(self.update_sr_levels(ca, age_minutes))
+                            update_tasks.append(self.update_sr_levels(pair_address, token_name, ca, age_minutes))
                             
                         if (current_time - last_ob_update).seconds >= OB_UPDATE_INTERVAL:
                             print("\n🔍 Updating Order Blocks...")

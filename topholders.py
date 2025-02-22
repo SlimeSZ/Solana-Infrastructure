@@ -64,7 +64,7 @@ class HolderAmount:
     async def calculate_holder_value(self, ca):
         try:
             supply = await self.mc.get_token_supply(ca)
-            price = await self.mc.get_token_price(ca)
+            price = await self.mc.backup_token_price(ca)
             sol_price = await self.get_sol_price()
             
             top_wallet_balance = await self.get_top_holders(ca)

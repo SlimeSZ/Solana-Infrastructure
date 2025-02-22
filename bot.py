@@ -383,7 +383,7 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "FiY4Diak9i73NAAmaghYDSSPz1QsxE8gtD4o8TWRpump"
+            test_ca = "JZpvHhx6TTQh1MBftAYu6atvAf75PtfgXKDZNb4pump"
             if ca == test_ca:
                 multialert_found = True
             """
@@ -407,7 +407,7 @@ class ScrapeAD:
 
                 try:
                 #dex calls & processes:
-                    dex_data = await self.dex.fetch_token_data_from_dex(session, ca) or {}
+                    dex_data = await self.dex.fetch_token_data_from_dex(ca) or {}
                 except Exception as e:
                     print(str(e))
                 try:
@@ -433,7 +433,9 @@ class ScrapeAD:
                         print(f"30m VOL: {m30_vol} || {m30_vol_change} % Change in vol")
                     liquidity = backup_bd_data.get('liquidity', 0)
                     print(f"Liquidity: {liquidity}")
-                    pool_address = dex_data.get('pool_address', 0)
+                    pool_address = dex_data.get('pool_address', None)
+                    if pool_address is None:
+                        return None
                     print(f"Pool Addres: {pool_address}")
                 except Exception as e:
                     print(str(e))
@@ -628,6 +630,8 @@ class ScrapeAD:
                 age = f"{age_value} {age_unit}"
                 print(age)
 
+                total_held = 0
+                holders_over_5 = 0
                 holder_criteria = False
                 holder_data = await self.get_top_holders.calculate_holder_value(ca)
                 if holder_data:
@@ -786,13 +790,18 @@ class ScrapeAD:
                 )
 
                 # Calculate composite score
-                total_score_before_penalties = (
-                    holder_score['total_score'] + 
-                    tokenomic_breakdown['total_score'] + 
-                    trust_breakdown['total_score']
-                )
+                total_score_before_penalties = 0
 
-                final_score = max(0, total_score_before_penalties - penalties)
+                if holder_score and isinstance(holder_score, dict):
+                    total_score_before_penalties += holder_score.get('total_score', 0)
+
+                if tokenomic_breakdown and isinstance(tokenomic_breakdown, dict):
+                    total_score_before_penalties += tokenomic_breakdown.get('total_score', 0)
+
+                if trust_breakdown and isinstance(trust_breakdown, dict):
+                    total_score_before_penalties += trust_breakdown.get('total_score', 0)
+
+                final_score = max(0, total_score_before_penalties - (penalties or 0))
 
                 # Send to webhook
                 await self.ma_webhooks.score_webhook(
@@ -930,7 +939,7 @@ class Main:
             # Create all tasks including bot startup
             tasks = [
                 bot.start(DISCORD_BOT_TOKEN),
-                self.ad_scraper.check_multialert(session, "test_name", '4gkEQvz7bHEJgMRRwzxPW1ShK2PLoX8a6ryFkXAKpump', "test_channel")
+                self.ad_scraper.check_multialert(session, "test_name", 'JZpvHhx6TTQh1MBftAYu6atvAf75PtfgXKDZNb4pump', "test_channel")
             ]
             
             try:

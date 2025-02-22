@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import aiohttp
 from webhooks import TradeWebhook
-from env import TRADE_WEBHOOK
+from env import OB_WEBHOOK
 from datetime import datetime
 from backupsupply import Supply
 
@@ -237,8 +237,8 @@ class OrderBlock:
                 
             # Send webhook alert for new OBs
             webhook = TradeWebhook()
-            await webhook.send_ob_webhook(TRADE_WEBHOOK, result, token_name, ca=self.ca)  
-    
+            await webhook.send_ob_webhook(OB_WEBHOOK, result, token_name, ca=self.ca)  
+
     async def monitor_ob_entry(self, token_name, ca, pair_address, current_mc):
         """Check if current marketcap is in any active order block zones"""
         try:
@@ -258,7 +258,7 @@ class OrderBlock:
                     
                     # Send webhook for OB entry
                     webhook = TradeWebhook()
-                    await webhook.send_ob_webhook(TRADE_WEBHOOK, {
+                    await webhook.send_ob_webhook(OB_WEBHOOK, {
                         'event': 'ob_zone_entered',
                         'current_mc': current_mc,
                         'ob_bottom': ob_bottom,

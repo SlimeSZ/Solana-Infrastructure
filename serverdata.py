@@ -13,6 +13,7 @@ class ServerData:
     def __init__(self, bot):
         self.bot = bot
         self.tx = TX_ANALYZER()
+        self.limit = 100
         self.target_ca = None
         
         # SWT Channel configurations
@@ -71,7 +72,7 @@ class ServerData:
                     
                     while retry_count < max_retries:
                         try:
-                            async for message in channel.history(limit=500):
+                            async for message in channel.history(limit=self.limit):
                                 if message.embeds:
                                     for embed in message.embeds:
                                         if embed.fields:
@@ -160,7 +161,7 @@ class ServerData:
                     channel_buys = 0.0
                     channel_sells = 0.0
                     channel_count = 0
-                    async for message in channel.history(limit=500):
+                    async for message in channel.history(limit=self.limit):
                         if message.embeds:
                             for embed in message.embeds:
                                 if embed.fields:
@@ -215,7 +216,7 @@ class ServerData:
                 channel_buys = 0.0
                 channel_sells = 0.0
                 channel_count = 0
-                async for message in channel.history(limit=500):
+                async for message in channel.history(limit=self.limit):
                     if message.embeds:
                         for embed in message.embeds:
                             if embed.fields:
