@@ -92,12 +92,11 @@ class DevTokenHistory:
                         try:
                             if attempt > 0:
                                 await asyncio.sleep(retry_delay * (attempt + 1))
-                                
-                            dex_data = await self.d.fetch_token_data_from_dex(ca)
-                            if dex_data:
-                                pair_address = dex_data['pool_address']
-                                token_ath = await self.ath.get_ath(ca)
-                                if not token_ath:
+                            token_ath = await self.ath.get_ath(ca)
+                            if not token_ath:
+                                dex_data = await self.d.fetch_token_data_from_dex(ca)
+                                if dex_data:
+                                    pair_address = dex_data['pool_address']
                                     token_ath = await self.backup_ath.calculate_all_time_high(ca, pair_address)
                                 
                                 if token_ath is not None:
@@ -219,7 +218,7 @@ class DevTokenHistory:
 class Main:
     def __init__(self):
         self.dev = DevTokenHistory()
-        self.ca = "7J6p2HQXeATiby8YWgnzigRRMepCe5FrhAeNupuUpump"
+        self.ca = "FTnCU6Q77beNH5bpgnQGtWmGxxJ1xzX3rsmkjBNTpump"
     async def run(self):
         await self.dev.deployer_report(ca=self.ca)
 

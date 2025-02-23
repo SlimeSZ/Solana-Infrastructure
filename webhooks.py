@@ -4,7 +4,7 @@ import aiohttp
 from env import ALEF_ALERT_WEBHOOK
 import discord
 from alefalerts import MessageSender 
-from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, SCORE_WEBHOOK, LARGE_BUY_WEBHOOK
+from env import MULTIALERT_WEBHOOK, SCORE_WEBHOOK, TWOX_WEBHOOK, SOL_10_5_WEBHOOK, SCORE_WEBHOOK, LARGE_BUY_WEBHOOK, DEV_HISTORY_WEBHOOK
 import csv
 import io
 from datetime import datetime
@@ -756,6 +756,83 @@ class TradeWebhook:
 
         except Exception as e:
             print(f"Error preparing OB webhook: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    async def send_dev_history_webhook(self, comprehensive_report):
+        try:
+            weekly_stats = comprehensive_report['weekly_activity'][0] if comprehensive_report['weekly_activity'] else None
+            
+            message = [
+                "```diff",
+                "📊 Developer History Analysis 📊",
+                f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                "```",
+                "",
+                "**Overall Statistics**",
+                f"• Total Tokens Created: `{comprehensive_report['general_stats']['total_tokens_created']}`",
+                f"• Created This Week: `{weekly_stats['total_tokens'] if weekly_stats else 'N/A'}`",
+                f"• Rug Rate: `{comprehensive_report['general_stats']['rug_rate']:.2%}`",
+                f"• Successful Tokens: `{comprehensive_report['general_stats']['total_successful']}`",
+                "",
+                "**Latest Rugs**"
+            ]
+
+            # Add rug details
+            for ca, info in comprehensive_report['rug_details'].items():
+                message.extend([
+                    f"• Token: `{info['name']} | {ca}`",
+                    f"  Created: `{info['created_at'].strftime('%Y-%m-%d')}`",
+                    ""
+                ])
+
+            # Add successful tokens
+            message.append("**Successful Tokens**")
+            for ca, info in comprehensive_report['successful_tokens'].items():
+                message.extend([
+                    f"• Token: `{info['name']} | {ca}`",
+                    f"  ATH: `${info['ath']:.2f}`" if info['ath'] else "  ATH: Not available",
+                    ""
+                ])
+
+            # Add latest tokens
+            message.append("**Latest 10 Tokens**")
+            for ca, info in comprehensive_report['latest_tokens'].items():
+                message.extend([
+                    f"• Token: `{info['name']} | {ca}`",
+                    f"  Status: `{info['status']}`",
+                    f"  Created: `{info['created_at'].strftime('%Y-%m-%d')}`",
+                    f"  Tx Count: `{info['total_tx']}`",
+                    ""
+                ])
+
+            # Add separator at the end
+            message.extend([
+                "```ini",
+                "[ ═══════════════════════════════════════ ]",
+                "```"
+            ])
+
+            formatted_message = "\n".join(message)
+
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(DEV_HISTORY_WEBHOOK, json={"content": formatted_message}) as response:
+                        if response.status == 204:
+                            print("Successfully sent dev history webhook")
+                            return True
+                        else:
+                            response_text = await response.text()
+                            print(f"Webhook failed with status {response.status}")
+                            print(f"Response: {response_text}")
+                            return False
+                except Exception as post_error:
+                    print(f"Error posting webhook: {str(post_error)}")
+                    return False
+
+        except Exception as e:
+            print(f"Error preparing dev history webhook: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
