@@ -20,6 +20,7 @@ from walletpnl import WAlletPNL
 from scoring import HolderScore, TokenomicScore, TrustScore, PenalizeScore, TokenAgeConvert
 from marketcap import MarketcapFetcher
 from bdmetadata import BuySellTradeUniqueData, Tokenomics
+from devreport import DevHist
 from twoxmonitor import TwoXChecker
 #from x import Twitter
 from scanforentry import MarketcapMonitor
@@ -36,6 +37,7 @@ class ScrapeAD:
         self.bot = bot
         self.limit = 1
         self.description_processor = TX_ANALYZER()
+        self.dev_history = DevHist()
         self.serv_data = None
         self.dex = DexScreenerAPI()
         self.soul_scanner_bot = SoulScannerBot()
@@ -383,7 +385,7 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "JZpvHhx6TTQh1MBftAYu6atvAf75PtfgXKDZNb4pump"
+            test_ca = "cB33zc46zyJ2jYBtKkewprZwi3Attmt8LvPDYJHpump"
             if ca == test_ca:
                 multialert_found = True
             """
@@ -581,7 +583,9 @@ class ScrapeAD:
                         }
                 
                         if soul_data['passes']:
-                            print(f"\nSOUL SCANNER TEST PASSED FOR: {ca}\nRunning bundle bot check")
+                            print(f"\nSOUL SCANNER TEST PASSED FOR: {ca}")
+                        else:
+                            print(f"Soul Scanner Failed")
                 except Exception as e:
                     print(f"Error during soul scanner: {str(e)}")
                 try:
@@ -589,7 +593,7 @@ class ScrapeAD:
                     if bundle_data and bundle_data['passes']:
                             #await self.rickbot_webhook.full_send_ca_to_alefdao(ca)
                             #await self.slime_alert.send_message(ca)
-                            print(f"\nBundle bot ALSO PASSED FOR: {ca}")
+                            print(f"\nBundle bot PASSED FOR: {ca}")
                             
                             #tg_metrics['holding_percentage'] = ['holding_percentage']
                             #if bundle_data['token_bonded']:
@@ -604,6 +608,12 @@ class ScrapeAD:
                             
                 except Exception as e:
                     print(f"Bundle Bot Error: {str(e)}")
+
+                if soul_data['passes'] and bundle_data['passes']:
+                    await self.slime_alert.send_message(ca)
+                elif soul_data['passes'] or bundle_data['passes']:
+                    await self.rickbot_webhook.conditional_send_ca_to_alefdao(ca)
+
 
                 print(f"Holder Count: {tg_metrics['holder_count']}")
                 #print(f"Top Holders hold total of: {tg_metrics['top_holding_percentage']} %")
@@ -803,35 +813,6 @@ class ScrapeAD:
 
                 final_score = max(0, total_score_before_penalties - (penalties or 0))
 
-                # Send to webhook
-                await self.ma_webhooks.score_webhook(
-                    token_name=token_name,
-                    ca=ca,
-                    
-                    holder_total=holder_score['total_score'],
-                    holder_age_confluence=holder_score['holder_count_age_confluence'],
-                    holder_security=holder_score['holder_security'],
-                    holder_wallet_analysis=holder_score['wallet_score'],
-                    
-                    tokenomic_total=tokenomic_breakdown['total_score'],
-                    tokenomic_vol_liq=tokenomic_breakdown['volume_marketcap_liquidity_confluence'],
-                    tokenomic_30m_vol=tokenomic_breakdown['m30_age_volume_confluence'],
-                    tokenomic_5m_vol=tokenomic_breakdown['m5_age_volume_confluence'],
-                    tokenomic_trade_confluence=tokenomic_breakdown['total_trades_buy_confluence'],
-                    tokenomic_buy_pressure=tokenomic_breakdown['buying_pressure'],
-                    tokenomic_wallet_growth=tokenomic_breakdown['wallet_growth'],
-                    
-                    trust_total=trust_breakdown['total_score'],
-                    trust_bs_confluence=trust_breakdown['server_buy_sell_pool_buy_sells_confluence'],
-                    trust_age_count=trust_breakdown['age_server_count_confluence'],
-                    trust_security=trust_breakdown['security_evaluation'],
-                    trust_activity=trust_breakdown['server_activity_evaluation'],
-                    trust_social=trust_breakdown['social_presence_evaluation'],
-                    
-                    total_before_penalties=total_score_before_penalties,
-                    penalties=penalties,
-                    final_score=final_score
-                )
                 """
                 #Twitter Analysis
                 if final_score >= 75:
@@ -881,8 +862,49 @@ class ScrapeAD:
                     sniper_percent=sniper_percent,
                     comp_score=final_score
                 )     
+                await self.ma_webhooks.score_webhook(
+                    token_name=token_name,
+                    ca=ca,
+                    
+                    holder_total=holder_score['total_score'],
+                    holder_age_confluence=holder_score['holder_count_age_confluence'],
+                    holder_security=holder_score['holder_security'],
+                    holder_wallet_analysis=holder_score['wallet_score'],
+                    
+                    tokenomic_total=tokenomic_breakdown['total_score'],
+                    tokenomic_vol_liq=tokenomic_breakdown['volume_marketcap_liquidity_confluence'],
+                    tokenomic_30m_vol=tokenomic_breakdown['m30_age_volume_confluence'],
+                    tokenomic_5m_vol=tokenomic_breakdown['m5_age_volume_confluence'],
+                    tokenomic_trade_confluence=tokenomic_breakdown['total_trades_buy_confluence'],
+                    tokenomic_buy_pressure=tokenomic_breakdown['buying_pressure'],
+                    tokenomic_wallet_growth=tokenomic_breakdown['wallet_growth'],
+                    
+                    trust_total=trust_breakdown['total_score'],
+                    trust_bs_confluence=trust_breakdown['server_buy_sell_pool_buy_sells_confluence'],
+                    trust_age_count=trust_breakdown['age_server_count_confluence'],
+                    trust_security=trust_breakdown['security_evaluation'],
+                    trust_activity=trust_breakdown['server_activity_evaluation'],
+                    trust_social=trust_breakdown['social_presence_evaluation'],
+                    
+                    total_before_penalties=total_score_before_penalties,
+                    penalties=penalties,
+                    final_score=final_score
+                )
+
                 age_minutes = self.age_converter.convert_token_age_to_minutes(token_age)
-                await self.mc_monitor.monitor_marketcap(token_name, ca, pool_address, age_minutes)
+                marketcap_task = asyncio.create_task(self.mc_monitor.monitor_marketcap(token_name, ca, pool_address, age_minutes))
+                dev_history_task = asyncio.create_task(self.dev_history.dev_report(ca=ca, token_name=token_name))
+
+                if not hasattr(self, 'background_tasks'):
+                    self.background_tasks = []
+                self.background_tasks.append(marketcap_task)
+                self.background_tasks.append(dev_history_task)
+
+                # Optionally, clean up completed tasks
+                self.background_tasks = [task for task in self.background_tasks if not task.done()]
+
+
+
 
 
 
@@ -939,7 +961,7 @@ class Main:
             # Create all tasks including bot startup
             tasks = [
                 bot.start(DISCORD_BOT_TOKEN),
-                self.ad_scraper.check_multialert(session, "test_name", 'JZpvHhx6TTQh1MBftAYu6atvAf75PtfgXKDZNb4pump', "test_channel")
+                self.ad_scraper.check_multialert(session, "test_name", 'cB33zc46zyJ2jYBtKkewprZwi3Attmt8LvPDYJHpump', "test_channel")
             ]
             
             try:

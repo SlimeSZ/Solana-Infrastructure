@@ -26,9 +26,9 @@ class MarketcapMonitor:
         
         # Start concurrent initialization
         init_tasks = [
-            self.update_sr_levels(pair_address, token_name, ca, age_minutes, initial=True),
-            self.ob.update_order_blocks(pair_address, token_name),
-            self.rpc.calculate_marketcap(ca)  # Get initial MC
+            asyncio.create_task(self.update_sr_levels(pair_address, token_name, ca, age_minutes, initial=True)),
+            asyncio.create_task(self.ob.update_order_blocks(pair_address, token_name)),
+            asyncio.create_task(self.rpc.calculate_marketcap(ca))  # Get initial MC
         ]
         
         results = await asyncio.gather(*init_tasks, return_exceptions=True)
@@ -122,8 +122,8 @@ class MarketcapMonitor:
                         if not self.sr_last_update or (current_time - self.sr_last_update).seconds >= self.sr_update_interval:
                             update_tasks.append(self.update_sr_levels(pair_address, token_name, ca, age_minutes))
                             
-                        if (current_time - last_ob_update).seconds >= OB_UPDATE_INTERVAL:
-                            print("\n🔍 Updating Order Blocks...")
+                        if (not hasattr(self.ob, 'active_obs') or not self.ob.active_obs) and (current_time - last_ob_update).seconds >= OB_UPDATE_INTERVAL:
+                            print("\n🔍 Looking for Order Blocks...")
                             update_tasks.append(self.ob.update_order_blocks(pair_address, token_name))
                             last_ob_update = current_time
                         
@@ -215,7 +215,7 @@ class MarketcapMonitor:
         """Start the trade scanner if not already running"""
         if not self.trade_scanner_task or self.trade_scanner_task.done():
             print(f"\n🔄 Starting OB/SR scanner for: {token_name}")
-            self.trade_scanner_task = asyncio.create_task(scan_trades(pair_address, token_ca))
+            self.trade_scanner_task = asyncio.create_task(scan_trades(pair_address, token_name, token_ca, scan_interval=60))
             self.monitoring = True
 
     async def stop_trade_scanner(self):

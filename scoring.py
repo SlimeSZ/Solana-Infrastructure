@@ -729,7 +729,7 @@ class TrustScore:  # 30% of total score
 
         except Exception as e:
             print(f"Error in trust score calculation: {str(e)}")
-            return 0
+            return 0, {}
     
     async def server_bs_general_bs_confluence(self, server_buys, server_sells, buys_change, sells_change):
         try:

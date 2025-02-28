@@ -145,8 +145,7 @@ class OrderBlock:
         
     async def _set_timeframe(self, pair_address, age_minutes):
         """
-        Set timeframe and try different ones if OB not found.
-        Returns OHLCV data from first successful timeframe that finds OBs.
+        Try different timeframes and return the one with most order blocks.
         """
         try:
             timeframes_to_try = self.short_timeframes if age_minutes < 80 else self.longer_timeframes
@@ -154,16 +153,19 @@ class OrderBlock:
             print(f"\n=== Trying timeframes for {age_minutes} min old token ===")
             print(f"Available timeframes: {timeframes_to_try}")
             
+            best_data = None
+            best_result = None
+            best_ob_count = 0
+            
             for tf in timeframes_to_try:
                 print(f"\nAttempting timeframe: {tf}")
                 self.timeframe = tf
                 
-                    
                 # Get OHLCV data
                 data = await self.o.fetch(timeframe=tf, pair_address=pair_address)
                 if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
-                    print(f"Failed to get OHLCV")
-                    return None
+                    print(f"Failed to get OHLCV for {tf}")
+                    continue
                     
                 if not isinstance(data, dict) or not data:
                     print(f"No valid data for {tf}, trying next timeframe...")
@@ -172,13 +174,23 @@ class OrderBlock:
                 # Try to find OBs with this data
                 result = await self.mark_ob(ca=self.ca, data=data)
                 if result and result.get('ob_count', 0) > 0:
-                    print(f"✅ Found {result['ob_count']} OBs using {tf} timeframe")
-                    return data
+                    ob_count = result.get('ob_count', 0)
+                    print(f"✅ Found {ob_count} OBs using {tf} timeframe")
+                    
+                    # Keep track of the timeframe with the most OBs
+                    if ob_count > best_ob_count:
+                        best_data = data
+                        best_result = result
+                        best_ob_count = ob_count
                 else:
                     print(f"No OBs found with {tf}, trying next timeframe...")
-                    
-            print("❌ No OBs found with any timeframe")
-            return None
+            
+            if best_data:
+                print(f"\n✅ Best timeframe had {best_ob_count} order blocks")
+                return best_data
+            else:
+                print("❌ No OBs found with any timeframe")
+                return None
 
         except Exception as e:
             print(f"Error in _set_timeframe: {str(e)}")
@@ -215,16 +227,20 @@ class OrderBlock:
             except Exception as e:
                 print(f"Error in main loop: {str(e)}")
                 await asyncio.sleep(45)
-        
+
     async def update_order_blocks(self, pair_address, token_name):
         """Scan for new order blocks and add to active list"""
         data = await self.get_data(pair_address, ca=self.ca)
         if not data:
-            return
+            return False
             
         result = await self.mark_ob(ca=self.ca, data=data)
         if result and result['ob_count'] > 0:
-            # Add new order blocks to active list
+            # Track new order blocks to add
+            new_obs = []
+            new_ob_found = False
+            
+            # Check each detected order block
             for i in range(result['ob_count']):
                 new_ob = {
                     'top': result['ob_top'][i],
@@ -233,11 +249,103 @@ class OrderBlock:
                     'strength': result['ob_strength'][i],
                     'time_found': datetime.now()
                 }
-                self.active_obs.append(new_ob)
                 
-            # Send webhook alert for new OBs
-            webhook = TradeWebhook()
-            await webhook.send_ob_webhook(OB_WEBHOOK, result, token_name, ca=self.ca)  
+                # Check if this is a duplicate of an existing order block
+                is_duplicate = False
+                for existing_ob in self.active_obs:
+                    # If top and bottom are within 1% of an existing OB, consider it a duplicate
+                    top_match = abs(existing_ob['top'] - new_ob['top']) / existing_ob['top'] < 0.01
+                    bottom_match = abs(existing_ob['bottom'] - new_ob['bottom']) / existing_ob['bottom'] < 0.01
+                    
+                    if top_match and bottom_match:
+                        is_duplicate = True
+                        break
+                
+                # Only add if not a duplicate
+                if not is_duplicate:
+                    new_obs.append(new_ob)
+                    new_ob_found = True
+                    print(f"New unique order block added: ${new_ob['bottom']:.2f} - ${new_ob['top']:.2f}")
+            
+            # Add new OBs to active list
+            if new_obs:
+                self.active_obs.extend(new_obs)
+                
+                # Only send webhook if new OBs were found
+                if new_ob_found:
+                    # Prepare webhook data with only new OBs
+                    webhook_data = {
+                        'ob_top': [ob['top'] for ob in new_obs],
+                        'ob_bottom': [ob['bottom'] for ob in new_obs],
+                        'ob_volume': [ob['volume'] for ob in new_obs],
+                        'ob_strength': [ob['strength'] for ob in new_obs],
+                        'ob_count': len(new_obs),
+                    }
+                    
+                    # Send webhook alert for new OBs
+                    webhook = TradeWebhook()
+                    await webhook.send_ob_webhook(OB_WEBHOOK, webhook_data, token_name, ca=self.ca)
+                    print(f"Sent webhook for {len(new_obs)} new order blocks")
+            else:
+                print("No new unique order blocks found")
+            
+            return True
+        else:
+            print("No order blocks found")
+            return False
+        
+    async def _set_timeframe(self, pair_address, age_minutes):
+        """
+        Try different timeframes and return the one with most order blocks.
+        """
+        try:
+            timeframes_to_try = self.short_timeframes if age_minutes < 80 else self.longer_timeframes
+            
+            print(f"\n=== Trying timeframes for {age_minutes} min old token ===")
+            print(f"Available timeframes: {timeframes_to_try}")
+            
+            best_data = None
+            best_result = None
+            best_ob_count = 0
+            
+            for tf in timeframes_to_try:
+                print(f"\nAttempting timeframe: {tf}")
+                self.timeframe = tf
+                
+                # Get OHLCV data
+                data = await self.o.fetch(timeframe=tf, pair_address=pair_address)
+                if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
+                    print(f"Failed to get OHLCV for {tf}")
+                    continue
+                    
+                if not isinstance(data, dict) or not data:
+                    print(f"No valid data for {tf}, trying next timeframe...")
+                    continue
+                    
+                # Try to find OBs with this data
+                result = await self.mark_ob(ca=self.ca, data=data)
+                if result and result.get('ob_count', 0) > 0:
+                    ob_count = result.get('ob_count', 0)
+                    print(f"✅ Found {ob_count} OBs using {tf} timeframe")
+                    
+                    # Keep track of the timeframe with the most OBs
+                    if ob_count > best_ob_count:
+                        best_data = data
+                        best_result = result
+                        best_ob_count = ob_count
+                else:
+                    print(f"No OBs found with {tf}, trying next timeframe...")
+            
+            if best_data:
+                print(f"\n✅ Best timeframe had {best_ob_count} order blocks")
+                return best_data
+            else:
+                print("❌ No OBs found with any timeframe")
+                return None
+
+        except Exception as e:
+            print(f"Error in _set_timeframe: {str(e)}")
+            return None 
 
     async def monitor_ob_entry(self, token_name, ca, pair_address, current_mc):
         """Check if current marketcap is in any active order block zones"""
@@ -259,13 +367,13 @@ class OrderBlock:
                     # Send webhook for OB entry
                     webhook = TradeWebhook()
                     await webhook.send_ob_webhook(OB_WEBHOOK, {
-                        'event': 'ob_zone_entered',
-                        'current_mc': current_mc,
-                        'ob_bottom': ob_bottom,
-                        'ob_top': ob_top,
-                        'ob_strength': ob['strength'],
-                        'volume': ob['volume']
-                    }, ca)
+                    'event': 'ob_zone_entered',
+                    'current_mc': current_mc,
+                    'ob_bottom': ob_bottom,
+                    'ob_top': ob_top,
+                    'ob_strength': ob['strength'],
+                    'volume': ob['volume']
+                }, token_name, ca)
                     
                     return True
                     

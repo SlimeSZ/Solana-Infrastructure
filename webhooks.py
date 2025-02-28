@@ -763,74 +763,54 @@ class TradeWebhook:
     async def send_dev_history_webhook(self, comprehensive_report):
         try:
             weekly_stats = comprehensive_report['weekly_activity'][0] if comprehensive_report['weekly_activity'] else None
+            dev_wallet = comprehensive_report['general_stats'].get('dev_wallet', 'Unknown')
+            original_ca = comprehensive_report.get('token_ca', 'Unknown')
             
-            message = [
-                "```diff",
-                "📊 Developer History Analysis 📊",
-                f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                "```",
-                "",
-                "**Overall Statistics**",
-                f"• Total Tokens Created: `{comprehensive_report['general_stats']['total_tokens_created']}`",
-                f"• Created This Week: `{weekly_stats['total_tokens'] if weekly_stats else 'N/A'}`",
-                f"• Rug Rate: `{comprehensive_report['general_stats']['rug_rate']:.2%}`",
-                f"• Successful Tokens: `{comprehensive_report['general_stats']['total_successful']}`",
-                "",
-                "**Latest Rugs**"
+            # Create separate embeds
+            embeds = [
+                {
+                    "title": f"📊 Dev History Report for: {dev_wallet}",
+                    "description": (
+                        f"**Developer of:** `{original_ca}`\n\n"
+                        f"**Overall Statistics**\n"
+                        f"• Total Tokens Created: `{comprehensive_report['general_stats']['total_tokens_created']}`\n"
+                        f"• Created This Week: `{weekly_stats['total_tokens'] if weekly_stats else 'N/A'}`\n"
+                        f"• Rug Rate: `{comprehensive_report['general_stats']['rug_rate']:.2%}`\n"
+                        f"• Successful Tokens: `{comprehensive_report['general_stats']['total_successful']}`"
+                    ),
+                    "color": 0x00aaff,
+                    "timestamp": datetime.utcnow().isoformat()
+                },
+                {
+                    "title": "Latest Rugs",
+                    "description": "\n".join([
+                        f"• CA: `{ca}`\n"
+                        f"  Created: `{info['created_at'].strftime('%Y-%m-%d')}`\n"
+                        for i, (ca, info) in enumerate(comprehensive_report['rug_details'].items()) if i < 4
+                    ]),
+                    "color": 0xff0000
+                },
+                {
+                    "title": "Successful Tokens",
+                    "description": "\n".join([
+                        f"• CA: `{ca}`\n"
+                        f"  ATH: `${info['ath']:.2f}`\n" if info['ath'] else "  ATH: Not available\n"
+                        for i, (ca, info) in enumerate(comprehensive_report['successful_tokens'].items()) if i < 4
+                    ]),
+                    "color": 0x00ff00
+                }
             ]
-
-            # Add rug details
-            for ca, info in comprehensive_report['rug_details'].items():
-                message.extend([
-                    f"• Token: `{info['name']} | {ca}`",
-                    f"  Created: `{info['created_at'].strftime('%Y-%m-%d')}`",
-                    ""
-                ])
-
-            # Add successful tokens
-            message.append("**Successful Tokens**")
-            for ca, info in comprehensive_report['successful_tokens'].items():
-                message.extend([
-                    f"• Token: `{info['name']} | {ca}`",
-                    f"  ATH: `${info['ath']:.2f}`" if info['ath'] else "  ATH: Not available",
-                    ""
-                ])
-
-            # Add latest tokens
-            message.append("**Latest 10 Tokens**")
-            for ca, info in comprehensive_report['latest_tokens'].items():
-                message.extend([
-                    f"• Token: `{info['name']} | {ca}`",
-                    f"  Status: `{info['status']}`",
-                    f"  Created: `{info['created_at'].strftime('%Y-%m-%d')}`",
-                    f"  Tx Count: `{info['total_tx']}`",
-                    ""
-                ])
-
-            # Add separator at the end
-            message.extend([
-                "```ini",
-                "[ ═══════════════════════════════════════ ]",
-                "```"
-            ])
-
-            formatted_message = "\n".join(message)
-
+            
+            # Send webhook with embeds
             async with aiohttp.ClientSession() as session:
                 try:
-                    async with session.post(DEV_HISTORY_WEBHOOK, json={"content": formatted_message}) as response:
-                        if response.status == 204:
-                            print("Successfully sent dev history webhook")
-                            return True
-                        else:
-                            response_text = await response.text()
-                            print(f"Webhook failed with status {response.status}")
-                            print(f"Response: {response_text}")
-                            return False
+                    await session.post(DEV_HISTORY_WEBHOOK, json={"embeds": embeds})
+                    print("Successfully sent dev history webhook")
+                    return True
                 except Exception as post_error:
                     print(f"Error posting webhook: {str(post_error)}")
                     return False
-
+                    
         except Exception as e:
             print(f"Error preparing dev history webhook: {str(e)}")
             import traceback
