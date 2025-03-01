@@ -385,7 +385,7 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "cB33zc46zyJ2jYBtKkewprZwi3Attmt8LvPDYJHpump"
+            test_ca = "E6MkvXNr64MytPvvaPnzpqegiyvBGMt8hsWCXGVhpump"
             if ca == test_ca:
                 multialert_found = True
             """
@@ -892,7 +892,8 @@ class ScrapeAD:
                 )
 
                 age_minutes = self.age_converter.convert_token_age_to_minutes(token_age)
-                marketcap_task = asyncio.create_task(self.mc_monitor.monitor_marketcap(token_name, ca, pool_address, age_minutes))
+                if final_score >= 48:
+                    marketcap_task = asyncio.create_task(self.mc_monitor.monitor_marketcap(token_name, ca, pool_address, age_minutes))
                 dev_history_task = asyncio.create_task(self.dev_history.dev_report(ca=ca, token_name=token_name))
 
                 if not hasattr(self, 'background_tasks'):
@@ -900,16 +901,7 @@ class ScrapeAD:
                 self.background_tasks.append(marketcap_task)
                 self.background_tasks.append(dev_history_task)
 
-                # Optionally, clean up completed tasks
                 self.background_tasks = [task for task in self.background_tasks if not task.done()]
-
-
-
-
-
-
-
-
         
         except Exception as e:
             print(f"Error in running check for multialert: {str(e)}")
@@ -958,14 +950,17 @@ class Main:
             await self.ad_scraper.initialize()
 
         async with aiohttp.ClientSession() as session:
-            # Create all tasks including bot startup
+            # Create all tasks including bot startup and continuous monitoring
             tasks = [
                 bot.start(DISCORD_BOT_TOKEN),
-                self.ad_scraper.check_multialert(session, "test_name", 'cB33zc46zyJ2jYBtKkewprZwi3Attmt8LvPDYJHpump', "test_channel")
+                self.ad_scraper.swt_process_messages(session), 
+                self.ad_scraper.fresh_process_messages(session),  
+                self.ad_scraper.degen_fetch_and_process_messages(session), 
+                self.ad_scraper.check_multialert(session, "test_name", 'E6MkvXNr64MytPvvaPnzpqegiyvBGMt8hsWCXGVhpump', "test_channel")
             ]
             
             try:
-                await asyncio.gather(*tasks)  # Don't forget the * to unpack tasks
+                await asyncio.gather(*tasks)
             except Exception as e:
                 print(f"Error in main loop: {str(e)}")
                 await asyncio.sleep(5)

@@ -14,6 +14,7 @@ class DevHist:
         self.bath = BATH()
         self.dex = DexScreenerAPI()
         self.mc = MarketcapFetcher()
+        self.webhook = TradeWebhook()
 
         self.max_retries = 3
         self.retry_delay = 2
@@ -153,6 +154,7 @@ class DevHist:
                     print(f"Total Tx: {info['total_tx']}")
                     print(f"Created: {info['created_at'].strftime('%Y-%m-%d')}")
 
+                await self.webhook.send_dev_history_webhook(comprehensive_report)
                 return comprehensive_report
 
             return None
