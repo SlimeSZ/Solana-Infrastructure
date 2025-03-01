@@ -74,9 +74,9 @@ class MultiAlert:
             m30_vol = m30_vol or 0
             m30_vol_change = m30_vol_change or 0
             uniqueplaceholder = "Increase" if new_unique_wallet_30m_change > 0 else "Decrease"
-            tradeplaceholder = "Increase" if trade_change_30m > 0 else "Decrease"
-            buyplaceholder = "Increase" if buy_change_30m > 0 else "Decrease"
-            sellplaceholder = "Increase" if sell_change_30m > 0 else "Decrease"
+            tradeplaceholder = "up" if trade_change_30m > 0 else "down"
+            buyplaceholder = "up" if buy_change_30m > 0 else "down"
+            sellplaceholder = "up" if sell_change_30m > 0 else "down"
             sniperplaceholder = "❌" if sniper_percent >= 45 else "✅"
             score_emoji = "🏆" if comp_score > 60 else "⚠️"
 
@@ -88,27 +88,27 @@ class MultiAlert:
                         "name": f"`{token_name}`",
                         "value": (
                             f"CA: `{ca}`\n"
-                            f"💰 Marketcap: $`{marketcap:,.2f}`\n"
-                            f"💧 Liquidity: $`{liquidity:,.2f}`\n"
-                            f"📊 5m Volume: $`{m5_vol:,.2f}`\n"
-                            f"📊 30m Volume: $`{m30_vol:,.2f}` -- Change of: {m30_vol_change:.2f}%\n"
-                            f" `Total Trades have {tradeplaceholder}d by {trade_change_30m:.2f}% in the last 30 min`\n"
-                            f" `Buys have {buyplaceholder}d by {buy_change_30m:.2f} in the last 30 min `\n"
-                            f" `Sells have {sellplaceholder}d by {sell_change_30m:.2f} in the last 30 min`\n"
-                            f"⏰ `Age`: {token_age['value']} {token_age['unit']}\n" 
+                            f"💰 Marketcap: ${marketcap:,.2f}\n"
+                            f"💧 Liquidity: ${liquidity:,.2f}\n"
+                            f"📊 5m Volume: ${m5_vol:,.2f}\n"
+                            f"📊 30m Volume: ${m30_vol:,.2f}{m30_vol_change:.2f}%\n"
+                            f" `Total Trades {tradeplaceholder} by {trade_change_30m:.2f}% last 30 min`\n"
+                            f" `Buys {buyplaceholder} by {buy_change_30m:.2f} last 30 min `\n"
+                            f" `Sells {sellplaceholder} by {sell_change_30m:.2f} last 30 min`\n"
+                            f"⏰ `Token Age`: {token_age['value']} {token_age['unit']}\n" 
                         ),
                         "inline": False
                     },
                     {
                         "name": "🔍 Server Activity",
                         "value": (
-                            f"SWT Activity: token has `{swt_count}` mentions (`{swt_buys:.2f}` SOL Buys, `{swt_sells:.2f}` SOL sells)\n"
+                            f"SWT Channels: token has `{swt_count}` mentions (`{swt_buys:.2f}` SOL Buys, `{swt_sells:.2f}` SOL sells)\n"
                             f"Fresh Activity: ca has `{fresh_count}` mentions (`{fresh_buys:.2f}` SOL buys, `{fresh_sells:.2f}` SOL sells)\n"
                         ),
                         "inline": False
                     },
                     {
-                        "name": f"`Token aped by wallets in:`",
+                        "name": f"Token aped by wallets in: ",
                         "value": f"{channel_text}",
                         "inline": False
                     },
@@ -117,7 +117,7 @@ class MultiAlert:
                         "value": (
                             f"👥 Total Holders: `{holder_count}`\n"
                             f"📊 Top 10 Hold: `{top_10_holding_percentage:.2f}`%\n"
-                            f"⚠️ Holders >5%: `{holders_over_5}`\n"
+                            f"⚠️ Holders over 5%: `{holders_over_5}`\n"
                             f"👨‍💼 Dev Holding: `{dev_holding_percentage:.2f}`%\n"
                             f" `{new_unique_wallets_30m} Total Unique Wallets in last 30 min. {uniqueplaceholder} of {new_unique_wallet_30m_change:.2f}`%"
                         ),
@@ -522,8 +522,8 @@ class TradeWebhook:
             # Build message with proper formatting
             message = [
                 "```diff",  # Add this line
-                "- 🚨 **Listening for Transaction Data** 🚨",  # Modified line
-                f"**Token: {str(token_name)}** | `{ca}`",
+                "- 🚨 Listening for Transaction Data 🚨",  # Modified line
+                f"Token: {str(token_name)} | {ca}",
                 f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
                 "```",  # Add this line
                 "",
@@ -624,22 +624,38 @@ class TradeWebhook:
             main_support = sr_levels['support']['mean']
             main_resistance = sr_levels['resistance']['mean']
             
-            # Build message with proper formatting
-            message = [
-                "```ini",
-                f"[ 🎯 Support | Resistance Levels for: {str(token_name)} 🎯 ]",
-                f"CA: `{ca}`",
-                f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                "```",
-                "",
-                "📊 **Main Levels**",
-                f"• Main Support: `${main_support:.2f}`",  # Added main support
-                f"• Main Resistance: `${main_resistance:.2f}`",
-                f"Will listen for TX Data when price enters this range",  # Added main resistance
-                ""  # Empty line for spacing
-            ]
-
-            # Add volume-based support zones
+            # Create embed structure
+            embed = {
+                "title": f"🎯 Support | Resistance Levels for: {str(token_name)} 🎯",
+                "color": 0x00FFFF,  # Cyan color
+                "fields": [
+                    {
+                        "name": "📊 Main Levels",
+                        "value": (
+                            f"• Main Support: `${main_support:.2f}`\n"
+                            f"• Main Resistance: `${main_resistance:.2f}`\n"
+                            f"Will listen for Large Transactions & Sells when price enters Support"
+                        ),
+                        "inline": False
+                    }
+                ],
+                "footer": {
+                    "text": f"CA: {ca} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                }
+            }
+            
+            # Add strength indicators if available
+            if 'resistance_strength' in sr_levels and 'support_strength' in sr_levels:
+                embed["fields"].append({
+                    "name": "💪 Level Strength",
+                    "value": (
+                        f"• Support Strength: `{sr_levels['support_strength']*100:.2f}%`\n"
+                        f"• Resistance Strength: `{sr_levels['resistance_strength']*100:.2f}%`"
+                    ),
+                    "inline": False
+                })
+            
+            # Add volume-based support zones if available
             if volume_supports:
                 valid_supports = [
                     zone for zone in volume_supports 
@@ -647,48 +663,47 @@ class TradeWebhook:
                 ]
                 
                 if valid_supports:
-                    message.append("📈 **Weaker Volume Based Support Zones**")
+                    volume_support_text = ""
                     for i, zone in enumerate(valid_supports, 1):
-                        distance = ((zone['high'] - main_support) / main_support) * 100
-                        message.extend([
-                            f"• Zone #{i}:",
-                            f"  Range: `${zone['low']:.2f} - ${zone['high']:.2f}`",
-                            f"  Volume: `{zone['volume']:.2f}`",
-                            f"  Distance from Support: `{distance:.2f}%`",
-                            ""
-                        ])
+                        volume_support_text += (
+                            f"• Zone #{i}:\n"
+                            f"  Range: `${zone['low']:.2f} - ${zone['high']:.2f}`\n"
+                            f"  Volume: `{zone['volume']:.2f}`\n"
+                        )
+                    
+                    embed["fields"].append({
+                        "name": "📈 Weaker Volume Based Support Zones Found",
+                        "value": volume_support_text[:1024],  # Discord field value limit
+                        "inline": False
+                    })
                 else:
-                    message.append("📈 No significant volume support zones found")
-                    message.append("")
-
-            # Add strength indicators
-            if 'resistance_strength' in sr_levels and 'support_strength' in sr_levels:
-                message.extend([
-                    "💪 **Level Strength**",
-                    f"• Support Strength: `{sr_levels['support_strength']*100:.2f}%`",
-                    f"• Resistance Strength: `{sr_levels['resistance_strength']*100:.2f}%`",
-                    ""
-                ])
-
-            # Add support/resistance ranges
-            message.extend([
-                "📐 **Level Ranges**",
-                f"• Support Range: `${sr_levels['support']['range_low']:.2f} - ${sr_levels['support']['range_high']:.2f}`",
-                f"• Resistance Range: `${sr_levels['resistance']['range_low']:.2f} - ${sr_levels['resistance']['range_high']:.2f}`",
-                ""
-            ])
-
-            # Join all parts with newlines
-            formatted_message = "\n".join(message)
+                    embed["fields"].append({
+                        "name": "📈 Volume Based Support Zones",
+                        "value": "No significant volume support zones found",
+                        "inline": False
+                    })
+            
+            # Add CA as a last field for easy copying
+            embed["fields"].append({
+                "name": "",
+                "value": f"`{ca}`",
+                "inline": False
+            })
+            
+            # Prepare webhook data
+            data = {
+                "username": "Support & Resistance Bot",
+                "embeds": [embed]
+            }
             
             # Print formatted message for debugging
-            print("Formatted SR webhook message:")
-            print(formatted_message)
-
+            print("Formatted SR webhook message (embed format):")
+            print(data)
+            
             # Send webhook
             async with aiohttp.ClientSession() as session:
                 try:
-                    async with session.post(webhook_url, json={"content": formatted_message}) as response:
+                    async with session.post(webhook_url, json=data) as response:
                         if response.status == 204:
                             print("Successfully sent SR webhook")
                             return True
@@ -709,39 +724,55 @@ class TradeWebhook:
 
     async def send_ob_webhook(self, webhook_url, ob_data, token_name, ca):
         """
-        Format and send Order Block alert to Discord webhook
+        Format and send Order Block alert to Discord webhook using embeds
         """
         try:
             print(f"Attempting to send OB webhook to {webhook_url}")
             
-            message = [
-                "```diff",  # Add this line
-                "+ 🎯 **Order Block Detected for: " + str(token_name) + "** 🎯",  # Modified line
-                f"CA: `{ca}`",
-                f"**Time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                "```",  # Add this line
-                "",
-                "📊 **Details**"
-            ]
-
-            # Add OB information
+            # Create embed structure
+            embed = {
+                "title": f"🎯 Order Block Detected for: {str(token_name)} 🎯",
+                "color": 0x00FF00,  # Green color to match the "+" in the original diff formatting
+                "fields": [],
+                "footer": {
+                    "text": f"CA: {ca} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                }
+            }
+            
+            # Add Order Block information
             for i in range(ob_data['ob_count']):
-                message.extend([
-                    f"• **Order Block #{i+1}**",
-                    f"  MC Range: `${ob_data['ob_bottom'][i]:.2f} - ${ob_data['ob_top'][i]:.8f}`",
-                    f"Will listen for TX Data when price enters this range",
-                    f"  OB Volume: `{ob_data['ob_volume'][i]:.2f}`",
-                    f"  OB Strength: `{ob_data['ob_strength'][i]:.2%}`",
-                    ""
-                ])
-
-            # Join all parts with newlines
-            formatted_message = "\n".join(message)
+                embed["fields"].append({
+                    "name": f"📊 Order Block #{i+1}",
+                    "value": (
+                        f"• MC Range: `${ob_data['ob_bottom'][i]:.2f} - ${ob_data['ob_top'][i]:.2f}`\n"
+                        f"Will listen for TX Data when price enters this range\n"
+                        f"• OB Volume: `{ob_data['ob_volume'][i]:.2f}`\n"
+                        f"• OB Strength: `{ob_data['ob_strength'][i]:.2%}`"
+                    ),
+                    "inline": False
+                })
+            
+            # Add CA as a last field for easy copying
+            embed["fields"].append({
+                "name": "",
+                "value": f"`{ca}`",
+                "inline": False
+            })
+            
+            # Prepare webhook data
+            data = {
+                "username": "Order Block Bot",
+                "embeds": [embed]
+            }
+            
+            # Print formatted message for debugging
+            print("Formatted OB webhook message (embed format):")
+            print(data)
             
             # Send webhook
             async with aiohttp.ClientSession() as session:
                 try:
-                    async with session.post(webhook_url, json={"content": formatted_message}) as response:
+                    async with session.post(webhook_url, json=data) as response:
                         if response.status == 204:
                             print("Successfully sent OB webhook")
                             return True
@@ -766,45 +797,59 @@ class TradeWebhook:
             dev_wallet = comprehensive_report['general_stats'].get('dev_wallet', 'Unknown')
             original_ca = comprehensive_report.get('token_ca', 'Unknown')
             
-            # Create separate embeds
-            embeds = [
-                {
-                    "title": f"📊 Dev History Report for: {dev_wallet}",
-                    "description": (
-                        f"**Developer of:** `{original_ca}`\n\n"
-                        f"**Overall Statistics**\n"
-                        f"• Total Tokens Created: `{comprehensive_report['general_stats']['total_tokens_created']}`\n"
-                        f"• Created This Week: `{weekly_stats['total_tokens'] if weekly_stats else 'N/A'}`\n"
-                        f"• Rug Rate: `{comprehensive_report['general_stats']['rug_rate']:.2%}`\n"
-                        f"• Successful Tokens: `{comprehensive_report['general_stats']['total_successful']}`"
-                    ),
-                    "color": 0x00aaff,
-                    "timestamp": datetime.utcnow().isoformat()
-                },
-                {
-                    "title": "Latest Rugs",
-                    "description": "\n".join([
-                        f"• CA: `{ca}`\n"
-                        f"  Created: `{info['created_at'].strftime('%Y-%m-%d')}`\n"
-                        for i, (ca, info) in enumerate(comprehensive_report['rug_details'].items()) if i < 4
-                    ]),
-                    "color": 0xff0000
-                },
-                {
-                    "title": "Successful Tokens",
-                    "description": "\n".join([
-                        f"• CA: `{ca}`\n"
-                        f"  ATH: `${info['ath']:.2f}`\n" if info['ath'] else "  ATH: Not available\n"
-                        for i, (ca, info) in enumerate(comprehensive_report['successful_tokens'].items()) if i < 4
-                    ]),
-                    "color": 0x00ff00
+            # Create a single embed with multiple fields
+            embed = {
+                "title": f"📊 Dev History Report for: {dev_wallet}",
+                "description": f"**Developer of:** `{original_ca}`",
+                "color": 0x00aaff,
+                "timestamp": datetime.utcnow().isoformat(),
+                "fields": [
+                    {
+                        "name": "Overall Statistics",
+                        "value": (
+                            f"• Total Tokens Created: `{comprehensive_report['general_stats']['total_tokens_created']}`\n"
+                            f"• Created This Week: `{weekly_stats['total_tokens'] if weekly_stats else 'N/A'}`\n"
+                            f"• Rug Rate: `{comprehensive_report['general_stats']['rug_rate']:.2%}`\n"
+                            f"• Successful Tokens: `{comprehensive_report['general_stats']['total_successful']}`"
+                        ),
+                        "inline": False
+                    },
+                    {
+                        "name": "🔴 Latest Rugs",
+                        "value": "\n".join([
+                            f"• CA: `{ca}`\n"
+                            f"  Created: `{info['created_at'].strftime('%Y-%m-%d')}`\n"
+                            for i, (ca, info) in enumerate(comprehensive_report['rug_details'].items()) if i < 4
+                        ]) or "None found",
+                        "inline": False
+                    },
+                    {
+                        "name": "🟢 Successful Tokens",
+                        "value": "\n".join([
+                            f"• CA: `{ca}`\n"
+                            f"  ATH: `${info['ath']:.2f}`\n" if info.get('ath') else f"• CA: `{ca}`\n  ATH: Not available\n"
+                            for i, (ca, info) in enumerate(comprehensive_report['successful_tokens'].items()) if i < 4
+                        ]) or "None found",
+                        "inline": False
+                    },
+                    {
+                        "name": "",
+                        "value": f"`{original_ca}`",
+                        "inline": False
+                    }
+                ],
+                "footer": {
+                    "text": f"Dev Wallet: {dev_wallet[:8]}...{dev_wallet[-6:]}"
                 }
-            ]
+            }
             
-            # Send webhook with embeds
+            # Send webhook with embed
             async with aiohttp.ClientSession() as session:
                 try:
-                    await session.post(DEV_HISTORY_WEBHOOK, json={"embeds": embeds})
+                    await session.post(DEV_HISTORY_WEBHOOK, json={
+                        "username": "Dev History Bot",
+                        "embeds": [embed]
+                    })
                     print("Successfully sent dev history webhook")
                     return True
                 except Exception as post_error:

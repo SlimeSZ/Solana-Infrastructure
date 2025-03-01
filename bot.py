@@ -385,7 +385,7 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "E6MkvXNr64MytPvvaPnzpqegiyvBGMt8hsWCXGVhpump"
+            test_ca = "3QLciXyL9ZgiayeAroKXJzKpipTkenc5qBEHYiBmpump"
             if ca == test_ca:
                 multialert_found = True
             """
@@ -956,7 +956,7 @@ class Main:
                 self.ad_scraper.swt_process_messages(session), 
                 self.ad_scraper.fresh_process_messages(session),  
                 self.ad_scraper.degen_fetch_and_process_messages(session), 
-                self.ad_scraper.check_multialert(session, "test_name", 'E6MkvXNr64MytPvvaPnzpqegiyvBGMt8hsWCXGVhpump', "test_channel")
+                self.ad_scraper.check_multialert(session, "test_name", '3QLciXyL9ZgiayeAroKXJzKpipTkenc5qBEHYiBmpump', "test_channel")
             ]
             
             try:
