@@ -93,6 +93,9 @@ class DevHist:
                                         reverse=True)[:10])
 
                 for ca, data in token_data.items():
+                    if ca == original_ca:
+                        continue
+                    
                     if 0 <= data['total_tx'] <= 20:
                         rug_report[ca] = {
                             'name': data['name'],

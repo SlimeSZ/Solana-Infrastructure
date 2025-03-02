@@ -77,8 +77,8 @@ class MultiAlert:
             tradeplaceholder = "up" if trade_change_30m > 0 else "down"
             buyplaceholder = "up" if buy_change_30m > 0 else "down"
             sellplaceholder = "up" if sell_change_30m > 0 else "down"
-            sniperplaceholder = "❌" if sniper_percent >= 45 else "✅"
-            score_emoji = "🏆" if comp_score > 60 else "⚠️"
+            sniperplaceholder = "⚠️" if sniper_percent >= 45 else "✅"
+            score_emoji = "🏆" if comp_score > 50 else "⚠️"
 
             embed = {
                 "title": "🚨 Multi Ape Alert",
@@ -91,10 +91,10 @@ class MultiAlert:
                             f"💰 Marketcap: ${marketcap:,.2f}\n"
                             f"💧 Liquidity: ${liquidity:,.2f}\n"
                             f"📊 5m Volume: ${m5_vol:,.2f}\n"
-                            f"📊 30m Volume: ${m30_vol:,.2f}{m30_vol_change:.2f}%\n"
+                            f"📊 30m Volume: ${m30_vol:,.2f} ({m30_vol_change:.2f}%)\n"
                             f" `Total Trades {tradeplaceholder} by {trade_change_30m:.2f}% last 30 min`\n"
-                            f" `Buys {buyplaceholder} by {buy_change_30m:.2f} last 30 min `\n"
-                            f" `Sells {sellplaceholder} by {sell_change_30m:.2f} last 30 min`\n"
+                            f" `Buys {buyplaceholder} {buy_change_30m:.2f} last 30 min `\n"
+                            f" `Sells {sellplaceholder} {sell_change_30m:.2f} last 30 min`\n"
                             f"⏰ `Token Age`: {token_age['value']} {token_age['unit']}\n" 
                         ),
                         "inline": False
@@ -102,8 +102,8 @@ class MultiAlert:
                     {
                         "name": "🔍 Server Activity",
                         "value": (
-                            f"SWT Channels: token has `{swt_count}` mentions (`{swt_buys:.2f}` SOL Buys, `{swt_sells:.2f}` SOL sells)\n"
-                            f"Fresh Activity: ca has `{fresh_count}` mentions (`{fresh_buys:.2f}` SOL buys, `{fresh_sells:.2f}` SOL sells)\n"
+                            f"SWT Activity: token has `{swt_count}` mentions (`{swt_buys:.2f}` SOL Buys, `{swt_sells:.2f}` SOL sells)\n"
+                            f"Fresh Activity: token has `{fresh_count}` mentions (`{fresh_buys:.2f}` SOL buys, `{fresh_sells:.2f}` SOL sells)\n"
                         ),
                         "inline": False
                     },
@@ -255,7 +255,7 @@ class MultiAlert:
         except Exception as e:
             print(str(e))
 
-    async def tensolbuywebhook(self, token_name, ca, channel_name):
+    async def tensolbuywebhook(self, sol_amount, token_name, ca, channel_name):
         try:
             data = {
                 "username": "Ten sol + Buy Alert",
@@ -271,7 +271,12 @@ class MultiAlert:
                             {
                                 "name": "Aped By wallet(s) in:",
                                 "value": channel_name,
-                                "inline": False
+                                "inline": True
+                            },
+                            {
+                                "name": "Amount:",
+                                "value": f"{sol_amount:.2f} SOL",
+                                "inline": True
                             }
                         ]
                     }
@@ -626,7 +631,7 @@ class TradeWebhook:
             
             # Create embed structure
             embed = {
-                "title": f"🎯 Support | Resistance Levels for: {str(token_name)} 🎯",
+                "title": f"🎯 Support | Resistance Levels for: {str(token_name)} ",
                 "color": 0x00FFFF,  # Cyan color
                 "fields": [
                     {
@@ -640,7 +645,7 @@ class TradeWebhook:
                     }
                 ],
                 "footer": {
-                    "text": f"CA: {ca} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                    "text": f"CA: `{ca}` • {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
                 }
             }
             
@@ -682,13 +687,6 @@ class TradeWebhook:
                         "value": "No significant volume support zones found",
                         "inline": False
                     })
-            
-            # Add CA as a last field for easy copying
-            embed["fields"].append({
-                "name": "",
-                "value": f"`{ca}`",
-                "inline": False
-            })
             
             # Prepare webhook data
             data = {

@@ -209,7 +209,7 @@ class ScrapeAD:
                                 if ca not in self.ten_five_sol_alerts:
                                     self.ten_five_sol_alerts.add(ca)
                                     print(f"10+ SOL BUY DETECTED")
-                                    await self.ma_webhooks.tensolbuywebhook(token_name, ca, channel_name)
+                                    await self.ma_webhooks.tensolbuywebhook(sol_amount, token_name, ca, channel_name)
 
             except Exception as e:
                 print(f"Error in SWT process: {str(e)}")
@@ -385,7 +385,7 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "3QLciXyL9ZgiayeAroKXJzKpipTkenc5qBEHYiBmpump"
+            test_ca = "367ALJsiyi3gA3MfD8pmkxHCQac1SFTMEaJvJLZppump"
             if ca == test_ca:
                 multialert_found = True
             """
@@ -610,7 +610,8 @@ class ScrapeAD:
                     print(f"Bundle Bot Error: {str(e)}")
 
                 if soul_data['passes'] and bundle_data['passes']:
-                    await self.slime_alert.send_message(ca)
+                    await self.rickbot_webhook.full_send_ca_to_alefdao(ca)
+                    #await self.slime_alert.send_message(ca)
                 elif soul_data['passes'] or bundle_data['passes']:
                     await self.rickbot_webhook.conditional_send_ca_to_alefdao(ca)
 
@@ -956,7 +957,7 @@ class Main:
                 self.ad_scraper.swt_process_messages(session), 
                 self.ad_scraper.fresh_process_messages(session),  
                 self.ad_scraper.degen_fetch_and_process_messages(session), 
-                self.ad_scraper.check_multialert(session, "test_name", '3QLciXyL9ZgiayeAroKXJzKpipTkenc5qBEHYiBmpump', "test_channel")
+                self.ad_scraper.check_multialert(session, "test_name", '367ALJsiyi3gA3MfD8pmkxHCQac1SFTMEaJvJLZppump', "test_channel")
             ]
             
             try:
