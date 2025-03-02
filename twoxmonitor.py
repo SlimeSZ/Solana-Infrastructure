@@ -80,7 +80,8 @@ class TwoXChecker:
                         #print("-" * 30)
                         
                         # Alert on any significant multiplier, regardless of previous alerts
-                        if increase_percentage > 70:
+                        if increase_percentage > 90 and rounded_x not in self.achieved_multipliers[ca]:
+                            self.achieved_multipliers[ca].add(rounded_x)  # Track this multiplier as achieved
                             success_count += 1  # Increment success counter
                             time_elapsed = self.calculate_time_elapsed(self.start_times[ca])
                             print(f"\n🚀 NEW MILESTONE: {rounded_x}X achieved for {token_name} (Success #{success_count}/2)")
@@ -109,48 +110,8 @@ class TwoXChecker:
                                 if ca in self.start_times:
                                     del self.start_times[ca]
                                 return
-                        
-                        # Always update the baseline MC for next comparison
-                        self.original_mcs[ca] = current_mc
                 
                 await asyncio.sleep(70)
             except Exception as e:
                 print(f"Error Monitoring MC for {token_name} ({ca})\nErr: {str(e)}")
                 await asyncio.sleep(60)
-
-"""
-class Main:
-    def __init__(self):
-        self.monitor = TwoXChecker()
-    
-    async def start_monitoring(self, ca, token_name):
-        async with aiohttp.ClientSession() as session:
-            # Start the monitoring - this creates and stores the task
-            await self.monitor.start_marketcap_monitoring(session, ca, token_name)
-            
-            # Get the created task from the monitoring_tasks dictionary
-            monitoring_task = self.monitor.monitoring_tasks[ca]
-            
-            # Now wait for the task
-            try:
-                await monitoring_task
-            except Exception as e:
-                print(f"Error in monitoring task: {str(e)}")
-    
-    async def run(self):
-        ca = "5oYMXRQESjr1n4gDaqeoDZ4NFi8QnSeW2hXP8p4gpump"
-        token_name = "TEST_TOKEN"
-        try:
-            await self.start_monitoring(ca, token_name)
-        except KeyboardInterrupt:
-            print("Monitoring stopped by user")
-        except Exception as e:
-            print(f"Error in run: {str(e)}")
-
-if __name__ == "__main__":
-    try:
-        main = Main()
-        asyncio.run(main.run())
-    except KeyboardInterrupt:
-        print("\nScript stopped by user")
-"""

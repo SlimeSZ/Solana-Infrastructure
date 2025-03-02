@@ -45,6 +45,10 @@ class DexScreenerAPI:
 
         self.pool_address = None
         
+        # Add website tracking
+        self.websites = {}
+        self.website_count = 0
+        
     async def fetch_token_data_from_dex(self, ca):
         self.reset_data()
         print(f"\n=== Fetching DexScreener Data for {ca[:8]}... ===")
@@ -114,6 +118,17 @@ class DexScreenerAPI:
                             if social['type'] == 'twitter':
                                 self.has_x = True
                                 self.x_link = social.get('url', 'No Twitter Link')
+                        
+                        # Process websites
+                        websites = info.get('websites', [])
+                        self.website_count = len(websites)
+                        for website in websites:
+                            label = website.get('label', '').lower()
+                            url = website.get('url', '')
+                            if label and url:
+                                self.websites[label] = url
+                        print(f"Websites: Count={self.website_count}, Types={list(self.websites.keys())}")
+                                
                         self.token_dex_url = pair.get('url', '')
                         
                         break
@@ -124,11 +139,16 @@ class DexScreenerAPI:
                     'pool_address': self.pool_address,
                     'token_mc': self.token_mc,
                     'token_5m_vol': self.token_5m_vol,
-                    'self.token_1h_vol': self.token_1h_vol,
+                    'token_1h_vol': self.token_1h_vol,
                     'token_liquidity': self.token_liquidity,
                     "socials": {
                         "telegram": self.tg_link if self.has_tg else None,
                         "twitter": self.x_link if self.has_x else None
+                    },
+                    "websites": {
+                        "count": self.website_count,
+                        "types": list(self.websites.keys()),
+                        "urls": self.websites
                     },
                     "dex_url": self.token_dex_url
                 }
@@ -140,7 +160,7 @@ class DexScreenerAPI:
 async def main():
     async with aiohttp.ClientSession() as session:
         dex = DexScreenerAPI()
-        ca = "HEZ6KcNNUKaWvUCBEe4BtfoeDHEHPkCHY9JaDNqrpump"
+        ca = "367ALJsiyi3gA3MfD8pmkxHCQac1SFTMEaJvJLZppump"
         result = await dex.fetch_token_data_from_dex(ca)
         print(result)
 

@@ -63,7 +63,7 @@ class MultiAlert:
     def __init__(self):
         pass
 
-    async def multialert_webhook(self, token_name, ca, marketcap, m5_vol, liquidity, telegram, twitter, photon_link, bull_x_link, dex_link, swt_count, swt_buys, swt_sells, fresh_count, fresh_buys, fresh_sells, last_3_tx, holder_count, dev_holding_percentage, token_migrated, passes_soulscanner, passes_bundlebot, dex_paid, token_age, top_10_holding_percentage, holders_over_5, wallet_data, m30_vol, m30_vol_change, new_unique_wallets_30m, new_unique_wallet_30m_change, trade_change_30m, buy_change_30m, sell_change_30m, channel_text, sniper_percent, comp_score):
+    async def multialert_webhook(self, token_name, ca, marketcap, m5_vol, liquidity, telegram, twitter, photon_link, bull_x_link, dex_link, swt_count, swt_buys, swt_sells, fresh_count, fresh_buys, fresh_sells, last_3_tx, holder_count, dev_holding_percentage, token_migrated, passes_soulscanner, passes_bundlebot, dex_paid, token_age, top_10_holding_percentage, holders_over_5, wallet_data, m30_vol, m30_vol_change, new_unique_wallets_30m, new_unique_wallet_30m_change, trade_change_30m, buy_change_30m, sell_change_30m, channel_text, sniper_percent, comp_score, websites_data=None):
         try:
             #place holders
             new_unique_wallet_30m_change = new_unique_wallet_30m_change or 0
@@ -177,6 +177,18 @@ class MultiAlert:
                 links += f"💬 Telegram: [Join]({telegram})\n"
             if twitter:
                 links += f"🐦 Twitter: [Follow]({twitter})\n"
+
+            if websites_data and websites_data.get('count', 0) > 0:
+                urls = websites_data.get('urls', {})
+                for site_type, url in urls.items():
+                    emoji = "🌐"
+                    if "youtube" in site_type.lower():
+                        emoji = "▶️"
+                    elif "tiktok" in site_type.lower():
+                        emoji = "🎵"
+                    elif "instagram" in site_type.lower():
+                        emoji = "📸"
+                    links += f"{emoji} {site_type.title()}: [Visit]({url})\n"
             
             embed["fields"].append({
                 "name": "Links",
@@ -222,7 +234,7 @@ class MultiAlert:
                     {
                         "title": "🚀 2x+ Alert!",
                         "description": (
-                            f"Token `{token_name}` has done a {x_val}X! Increase of {increase_percentage:.2f}"
+                            f"Token `{token_name}` has done a {x_val}X! Increase of {increase_percentage:.2f}%"
                             f"CA: `{ca}`"
                         ),
                         "fields": [
@@ -237,7 +249,7 @@ class MultiAlert:
                                 "inline": False
                             },
                             {
-                                "name": f"Increase of {increase_percentage:.2f}",
+                                "name": f"Increase of {increase_percentage:.2f}%",
                                 "value": f"{x_val}X !!!",
                                 "inline": False
                             }
