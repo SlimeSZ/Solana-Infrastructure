@@ -164,6 +164,8 @@ class ScrapeAD:
                 if not data:
                     await asyncio.sleep(4)
                     continue
+
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Processing {len(data)} new SWT message(s)")
                 
                 for message_id, message_data in data.items():
                     # Description extraction
@@ -263,6 +265,8 @@ class ScrapeAD:
                 if not data:
                     await asyncio.sleep(4)
                     continue
+
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Processing {len(data)} new Fresh message(s)")
                 
                 for message_id, message_data in data.items():
                     if message_data['description']:
@@ -385,20 +389,14 @@ class ScrapeAD:
             all_swt = (self.whale_cas | self.smart_cas | self.legend_cas | self.kol_alpha_cas | self.kol_regular_cas | self.challenge_cas | self.high_freq_cas | self.insider_wallet_cas)
 
             multialert_found = False #should act more as a dict with bool val associated w ca
-            test_ca = "367ALJsiyi3gA3MfD8pmkxHCQac1SFTMEaJvJLZppump"
+            """
+            test_ca = "cSkk1aJBuXhAhgkwXt47tKDRFrLAbA8BVCq6FJTpump"
             if ca == test_ca:
                 multialert_found = True
             """
-            if ca in all_fresh and ca in self.degen_cas: #associate ca w channel it was found in, pass it to print or webhook statements
+            if ca in all_fresh and (ca in self.degen_cas or ca in all_swt): #associate ca w channel it was found in, pass it to print or webhook statements
                 multialert_found = True
-            if ca in all_swt and ca in self.degen_cas:
-                multialert_found = True
-            """
 
-                
-                
-
-            
             if multialert_found:
                 self.multi_alerted_cas.add(ca)
                 print(f"\nMUlTI ALERT FOUND\n{"*" * 50}")
@@ -658,7 +656,7 @@ class ScrapeAD:
                                 print(f"Warning: {holders_over_5} Holders w/ over 5%")
 
                             #check criteria to run top wallet pnl analysis
-                            if total_held < 25 and soul_data['passes'] and holders_over_5 < 4 and dev_holding < 5:
+                            if soul_data['passes'] and holders_over_5 < 4 and dev_holding < 5:
                                 holder_criteria = True
                                 if holder_criteria:
                                     wallet_analysis = {}
@@ -956,8 +954,8 @@ class Main:
                 bot.start(DISCORD_BOT_TOKEN),
                 self.ad_scraper.swt_process_messages(session), 
                 self.ad_scraper.fresh_process_messages(session),  
-                self.ad_scraper.degen_fetch_and_process_messages(session), 
-                self.ad_scraper.check_multialert(session, "test_name", '367ALJsiyi3gA3MfD8pmkxHCQac1SFTMEaJvJLZppump', "test_channel")
+                self.ad_scraper.degen_fetch_and_process_messages(session)
+                #self.ad_scraper.check_multialert(session, "test_name", 'cSkk1aJBuXhAhgkwXt47tKDRFrLAbA8BVCq6FJTpump', "test_channel")
             ]
             
             try:

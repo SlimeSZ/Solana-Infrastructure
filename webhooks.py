@@ -794,17 +794,19 @@ class TradeWebhook:
             weekly_stats = comprehensive_report['weekly_activity'][0] if comprehensive_report['weekly_activity'] else None
             dev_wallet = comprehensive_report['general_stats'].get('dev_wallet', 'Unknown')
             original_ca = comprehensive_report.get('token_ca', 'Unknown')
+            token_name = comprehensive_report.get('token_name', 'Unknown')
             
             # Create a single embed with multiple fields
             embed = {
-                "title": f"📊 Dev History Report for: {dev_wallet}",
-                "description": f"**Developer of:** `{original_ca}`",
+                "title": f"📊 Dev Wallet: {dev_wallet}",
+                "description": f"**Developer of:** `{token_name}`",
                 "color": 0x00aaff,
                 "timestamp": datetime.utcnow().isoformat(),
                 "fields": [
                     {
                         "name": "Overall Statistics",
                         "value": (
+                            f"CA: {original_ca}"
                             f"• Total Tokens Created: `{comprehensive_report['general_stats']['total_tokens_created']}`\n"
                             f"• Created This Week: `{weekly_stats['total_tokens'] if weekly_stats else 'N/A'}`\n"
                             f"• Rug Rate: `{comprehensive_report['general_stats']['rug_rate']:.2%}`\n"

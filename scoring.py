@@ -589,6 +589,10 @@ class TokenomicScore:
             score = 0
             max_subscore = 10.0
 
+            # Convert None values to 0 to avoid comparison errors
+            buys_change = 0 if buys_change is None else buys_change
+            sells_change = 0 if sells_change is None else sells_change
+
             # Buy/Sell ratio confluence
             buy_sell_ratio = buys_change / sells_change if sells_change > 0 else buys_change
             if 0.7 <= buy_sell_ratio <= 1:
@@ -629,6 +633,7 @@ class TokenomicScore:
             print(f"Error in buying pressure evaluation: {str(e)}")
             return 0
 
+    # Fix 2: Update evaluate_wallet_growth to handle None values
     async def evaluate_wallet_growth(
         self,
         total_unique_wallets_30m,
@@ -640,6 +645,13 @@ class TokenomicScore:
         try:
             score = 0
             max_subscore = 10.0
+
+            # Convert None values to 0 to avoid comparison errors
+            total_unique_wallets_30m = 0 if total_unique_wallets_30m is None else total_unique_wallets_30m
+            total_unique_wallets_1h = 0 if total_unique_wallets_1h is None else total_unique_wallets_1h
+            unique_wallet_change_30m = 0 if unique_wallet_change_30m is None else unique_wallet_change_30m
+            unique_wallet_change_1h = 0 if unique_wallet_change_1h is None else unique_wallet_change_1h
+            holder_count = 0 if holder_count is None else holder_count
 
             # Evaluate 30m metrics first
             if unique_wallet_change_30m > 0:
@@ -706,13 +718,25 @@ class TrustScore:  # 30% of total score
     ):
         try:
             age_in_minutes = self.age_conv.convert_token_age_to_minutes(token_age)
+            
+            # Get server_bs_general_bs_confluence score and ensure it's not None
+            server_bs_score = await self.server_bs_general_bs_confluence(server_buys, server_sells, buys_change, sells_change)
+            if server_bs_score is None:
+                server_bs_score = 0
+                
+            # Get token_age_server_count_confluence score and ensure it's not None
+            age_server_score = await self.token_age_server_count_confluence(server_count, age_in_minutes)
+            if age_server_score is None:
+                age_server_score = 0
+                
             scores = {
-                'server_buy_sell_pool_buy_sells_confluence': await self.server_bs_general_bs_confluence(server_buys, server_sells, buys_change, sells_change),
-                'age_server_count_confluence': await self.token_age_server_count_confluence(server_count, age_in_minutes),
+                'server_buy_sell_pool_buy_sells_confluence': server_bs_score,
+                'age_server_count_confluence': age_server_score,
                 'security_evaluation': await self.evaluate_security(dexpaid, soulscannerpass, bundlebotpass),
                 'server_activity_evaluation': await self.evaluate_server_activity(age_in_minutes, server_buys, server_sells),
                 'social_presence_evaluation': await self.evaluate_social_presence(dexpaid, soulscannerpass, bundlebotpass, has_tg, has_x)
             }
+            
             normalized_scores = {
                 'server_buy_sell_pool_buy_sells_confluence': (scores['server_buy_sell_pool_buy_sells_confluence'] / 10) * self.SERVER_BS_MAX,
                 'age_server_count_confluence': (scores['age_server_count_confluence'] / 10) * self.TOKEN_AGE_SERVER_MAX,
@@ -721,25 +745,37 @@ class TrustScore:  # 30% of total score
                 'social_presence_evaluation': (scores['social_presence_evaluation'] / 10) * self.SOCIAL_PRESENCE_MAX
             }
 
-            total_sscore = sum(normalized_scores.values())
-            total_score = min(total_sscore, self.MAX_SCORE)
+            total_score = sum(normalized_scores.values())
+            total_score = min(total_score, self.MAX_SCORE)
             normalized_scores['total_score'] = total_score
 
             return total_score, normalized_scores
 
         except Exception as e:
             print(f"Error in trust score calculation: {str(e)}")
-            return 0, {}
+            # Return default values when an error occurs
+            return 0, {'total_score': 0, 
+                    'server_buy_sell_pool_buy_sells_confluence': 0,
+                    'age_server_count_confluence': 0,
+                    'security_evaluation': 0,
+                    'server_activity_evaluation': 0,
+                    'social_presence_evaluation': 0}
     
     async def server_bs_general_bs_confluence(self, server_buys, server_sells, buys_change, sells_change):
         try:
             score = 0
             max_subscore = 10
 
-            server_buy_sell_ratio = server_buys / server_sells if server_sells > 0 else server_buys
-            pool_buy_sell_ratio = buys_change / sells_change  if sells_change > 0 else buys_change
+            # Convert None values to 0 to avoid comparison errors
+            server_buys = 0 if server_buys is None else server_buys
+            server_sells = 0 if server_sells is None else server_sells
+            buys_change = 0 if buys_change is None else buys_change
+            sells_change = 0 if sells_change is None else sells_change
 
-            #server buys > sell confluence relation w/ buys% > sells% from pool metadata
+            server_buy_sell_ratio = server_buys / server_sells if server_sells > 0 else server_buys
+            pool_buy_sell_ratio = buys_change / sells_change if sells_change > 0 else buys_change
+
+            # Server buys > sell confluence relation w/ buys% > sells% from pool metadata
             if 1 <= server_buy_sell_ratio <= 1.3 and 1 <= pool_buy_sell_ratio <= 1.3:
                 score += 1
             elif 1.3 < server_buy_sell_ratio <= 1.5 and 1.3 < pool_buy_sell_ratio <= 1.5:
@@ -748,7 +784,7 @@ class TrustScore:  # 30% of total score
                 score += 4
             elif 1.8 < server_buy_sell_ratio <= 2.2 and 1.8 < pool_buy_sell_ratio <= 2.2:
                 score += 5
-            elif 2.2  < server_buy_sell_ratio <= 2.5 and 2.2 < pool_buy_sell_ratio <= 2.5:
+            elif 2.2 < server_buy_sell_ratio <= 2.5 and 2.2 < pool_buy_sell_ratio <= 2.5:
                 score += 7
             elif server_buy_sell_ratio > 2 and pool_buy_sell_ratio > 2:
                 score += 10
@@ -759,16 +795,17 @@ class TrustScore:  # 30% of total score
             return min(score, max_subscore)
         
         except Exception as e:
-            print(str(e))
-            return None
+            print(f"Error in server_bs_general_bs_confluence: {str(e)}")
+            return 0  # Return 0 instead of None
 
+    # Fix 4: Update token_age_server_count_confluence to return 0 instead of None
     async def token_age_server_count_confluence(self, server_count, token_age):
         score = 0.0
         max_subscore = 10
         try:
             if token_age < 60 and server_count > 10:
-                score  += 8
-            elif token_age < 60 and 5 < server_count <=10:
+                score += 8
+            elif token_age < 60 and 5 < server_count <= 10:
                 score += 6
             elif token_age < 30 and server_count > 10:
                 score += 10
@@ -783,9 +820,9 @@ class TrustScore:  # 30% of total score
 
             return min(score, max_subscore)
             
-        except ZeroDivisionError as e:
-            print(str(e))
-            return None
+        except Exception as e:
+            print(f"Error in token_age_server_count_confluence: {str(e)}")
+            return 0  # Return 0 instead of None
             
 
     async def evaluate_security(self, dexpaid, soulscannerpass, bundlebotpass):
