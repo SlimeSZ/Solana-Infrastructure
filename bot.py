@@ -16,7 +16,7 @@ from tg import SoulScannerBot, BundleBot, WalletPNL
 from tokenage import TokenAge
 from alefalerts import MessageSender
 from topholders import HolderAmount
-from walletpnl import WAlletPNL
+from walletpnl import WalletPNL
 from scoring import HolderScore, TokenomicScore, TrustScore, PenalizeScore, TokenAgeConvert
 from marketcap import MarketcapFetcher
 from bdmetadata import BuySellTradeUniqueData, Tokenomics
@@ -42,7 +42,7 @@ class ScrapeAD:
         self.dex = DexScreenerAPI()
         self.soul_scanner_bot = SoulScannerBot()
         self.bundle_bot = BundleBot()
-        self.wallet_pnl = WAlletPNL()
+        self.wallet_pnl = WalletPNL()
         self.wallet_pnl_tg = WalletPNL()
         self.token_age = TokenAge()
         self.slime_alert = MessageSender()
@@ -767,17 +767,21 @@ class ScrapeAD:
                 wallet_analysis = {}
                 try:
                     holder_data = await self.get_top_holders.calculate_holder_value(ca)
-                    if holder_data:
-                        holder_values, holder_evaluation = holder_data  
-                        if holder_values:  
+                    if holder_data and isinstance(holder_data, tuple) and len(holder_data) == 2:
+                        holder_values, holder_evaluation = holder_data
+                        if holder_values and isinstance(holder_values, dict) and 'metadata' in holder_values:
                             metadata = holder_values.get('metadata', {})
                             if metadata:
-                                holders_over_5 = metadata.get('holders_over_5_percent', 0)
+                                # Validate the values
                                 total_held = metadata.get('total_percentage_held', 0)
-                                print(f"\nHolder Analysis:")
-                                print(f"Top 10 Wallets hold total of {total_held}%")
-                                if holders_over_5:
-                                    print(f"Warning: {holders_over_5} Holders w/ over 5%")
+                                if total_held > 100:  # Sanity check
+                                    print(f"Warning: Invalid total_held value: {total_held}%, capping at 100%")
+                                    total_held = 100
+                                    
+                                holders_over_5 = metadata.get('holders_over_5_percent', 0)
+                                if holders_over_5 > 10:  # Sanity check for reasonable max
+                                    print(f"Warning: Suspicious holders_over_5: {holders_over_5}, capping at 10")
+                                    holders_over_5 = 10
 
                                 #check criteria to run top wallet pnl analysis
                                 if soul_data.get('passes', False) and holders_over_5 < 4 and dev_holding < 5:
@@ -794,15 +798,15 @@ class ScrapeAD:
                                             if wallet_address != 'metadata' and wallets_processed < 4:
                                                 try:
                                                     wallet_pnl = await self.wallet_pnl.calculate_pnl(wallet_address)
-                                                    if wallet_pnl:
+                                                    if wallet_pnl and isinstance(wallet_pnl, dict):  # Make sure wallet_pnl is not None and is a dict
                                                         wallet_analysis[wallet_address] = {
-                                                        'pnl': wallet_pnl['pnl'],
-                                                        'tokens_traded': wallet_pnl['tokens_traded'],
-                                                        'wins': wallet_pnl['trades_won'],
-                                                        'losses': wallet_pnl['trades_loss'],
-                                                        'avg_entry': wallet_pnl['average_entry_per_trade'] if wallet_pnl['average_entry_per_trade'] > 0 else None
-                                                    }
-                                                    wallets_processed += 1
+                                                            'pnl': wallet_pnl.get('pnl', 0),  # Use .get() to handle missing keys
+                                                            'tokens_traded': wallet_pnl.get('tokens_traded', 0),
+                                                            'wins': wallet_pnl.get('trades_won', 0),
+                                                            'losses': wallet_pnl.get('trades_loss', 0),
+                                                            'avg_entry': wallet_pnl.get('average_entry_per_trade', 0) if wallet_pnl.get('average_entry_per_trade', 0) > 0 else None
+                                                        }
+                                                        wallets_processed += 1  # Increment counter by 1
                                                 except Exception as e:
                                                     print(f"Error processing wallet PNL for {wallet_address}: {str(e)}")
                 except Exception as e:

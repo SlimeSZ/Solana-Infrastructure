@@ -11,15 +11,16 @@ class HolderAmount:
         self.rpc_endpoint = rpc_endpoint
         self.gecko_base_url = "https://api.geckoterminal.com/api/v2/simple/networks"
         self.limit_bd = 11
-        self.holders_data: Dict[str, float] = {}
+        self.holders_data = {}
         #calls to extrnl clsss
         self.mc = MarketcapFetcher()
         self.w = WalletPNL()
 
 
     async def get_top_holders(self, ca):
+        self.holders_data = {}
         bd_url = f"https://public-api.birdeye.so/defi/v3/token/holder?address={ca}&offset=0&limit={self.limit_bd}"
-
+        
         headers = {
             "accept": "application/json",
             "x-chain": "solana",
@@ -29,6 +30,18 @@ class HolderAmount:
             response = requests.get(bd_url, headers=headers)
             response.raise_for_status()
             data = response.json()
+            
+            # Validate the data structure
+            if not data or 'data' not in data or 'items' not in data['data']:
+                print(f"Invalid holder data structure for {ca}")
+                return {}
+                
+            # Ensure total_supply is valid before calculating percentages
+            supply = await self.mc.get_token_supply(ca)
+            if not supply or float(supply) <= 0:
+                print(f"Invalid supply for {ca}: {supply}")
+                return {}
+            
             for item in data['data']['items']:
                 owner = item['owner']
                 amount = float(item['ui_amount'])
@@ -36,8 +49,8 @@ class HolderAmount:
             
             return self.holders_data
         except Exception as e:
-            print(str(e))
-            return None
+            print(f"Error getting top holders for {ca}: {str(e)}")
+            return {}
 
     
     async def get_sol_price(self) -> float:

@@ -254,7 +254,7 @@ class WalletPNL:
             if not tx_data:
                 print(f"No transaction data for wallet: {wallet_address[:8]}")
                 return {
-                    'last_100_tx_pnl': 0,
+                    'pnl': 0,
                     'tokens_traded': 0,
                     'trades_won': 0,
                     'trades_loss': 0,
@@ -321,8 +321,8 @@ class WalletPNL:
                 token_sol_spent = 0
                 token_sol_received = 0
                 
-                print(f"\n🪙 Token: {token_name} ({token_symbol}) - {ca[:10]}...")
-                print(f"  💱 Transactions: {len(txs)} (limited to last 15)")
+                #print(f"\n🪙 Token: {token_name} ({token_symbol}) - {ca[:10]}...")
+                #print(f"  💱 Transactions: {len(txs)} (limited to last 15)")
                 
                 for tx in txs:
                     if tx['tx_type'] == 'Buy':
@@ -347,11 +347,11 @@ class WalletPNL:
                 if token_sol_spent > 0:
                     token_roi = (token_pnl / token_sol_spent) * 100
                 
-                print(f"  📊 Summary for {token_name}:")
-                print(f"     Bought: {token_total_bought:.6f} tokens for {token_sol_spent:.6f} SOL")
-                print(f"     Sold: {token_total_sold:.6f} tokens for {token_sol_received:.6f} SOL")
-                print(f"     PnL: {token_pnl:.6f} SOL ({token_roi:.2f}%)")
-                print(f"     Remaining: {(token_total_bought - token_total_sold):.6f} tokens")
+                #print(f"  📊 Summary for {token_name}:")
+                #print(f"     Bought: {token_total_bought:.6f} tokens for {token_sol_spent:.6f} SOL")
+                #print(f"     Sold: {token_total_sold:.6f} tokens for {token_sol_received:.6f} SOL")
+                #print(f"     PnL: {token_pnl:.6f} SOL ({token_roi:.2f}%)")
+                #print(f"     Remaining: {(token_total_bought - token_total_sold):.6f} tokens")
                 
                 # Store detailed PnL information for this token
                 token_pnl_details[ca] = {
@@ -393,20 +393,20 @@ class WalletPNL:
             avg_sol_entry = total_sol_spent / total_trades if total_trades > 0 else 0
             
             # Print detailed PnL table
-            print("\n=== WALLET PNL ANALYSIS BY TOKEN (LAST 15 TRADES, NO DUPLICATES) ===")
-            print(f"{'TOKEN':<12} {'SYMBOL':<8} {'BOUGHT':<10} {'SOLD':<10} {'REMAINING':<10} {'SOL SPENT':<10} {'SOL RECVD':<10} {'PNL':<10} {'ROI %':<10}")
-            print("-" * 100)
+            #print("\n=== WALLET PNL ANALYSIS BY TOKEN (LAST 15 TRADES, NO DUPLICATES) ===")
+            #print(f"{'TOKEN':<12} {'SYMBOL':<8} {'BOUGHT':<10} {'SOLD':<10} {'REMAINING':<10} {'SOL SPENT':<10} {'SOL RECVD':<10} {'PNL':<10} {'ROI %':<10}")
+            #print("-" * 100)
             
             # Sort by PnL (highest first)
             sorted_tokens = sorted(filtered_token_pnl_details.items(), key=lambda x: x[1]['pnl'], reverse=True)
             
             for ca, details in sorted_tokens:
                 name = details['name'][:10] + '..' if len(details['name']) > 12 else details['name']
-                print(f"{name:<12} {details['symbol']:<8} {details['total_bought']:<10.4f} {details['total_sold']:<10.4f} {details['remaining']:<10.4f} {details['sol_spent']:<10.4f} {details['sol_received']:<10.4f} {details['pnl']:<10.4f} {details['roi_percent']:<10.2f}%")
+                #print(f"{name:<12} {details['symbol']:<8} {details['total_bought']:<10.4f} {details['total_sold']:<10.4f} {details['remaining']:<10.4f} {details['sol_spent']:<10.4f} {details['sol_received']:<10.4f} {details['pnl']:<10.4f} {details['roi_percent']:<10.2f}%")
             
-            print("-" * 100)
+            #print("-" * 100)
             overall_roi = (total_wallet_pnl / total_sol_spent * 100) if total_sol_spent > 0 else 0
-            print(f"TOTALS: {total_tokens} tokens, {total_trades} trades, Spent: {total_sol_spent:.4f} SOL, PnL: {total_wallet_pnl:.4f} SOL, ROI: {overall_roi:.2f}%")
+            #print(f"TOTALS: {total_tokens} tokens, {total_trades} trades, Spent: {total_sol_spent:.4f} SOL, PnL: {total_wallet_pnl:.4f} SOL, ROI: {overall_roi:.2f}%")
             
             # Add period information
             now = datetime.now()
@@ -415,9 +415,9 @@ class WalletPNL:
             else:
                 start_date = "All time"
             end_date = now.strftime('%Y-%m-%d')
-            print(f"\nPeriod: {start_date} to {end_date}")
+            #print(f"\nPeriod: {start_date} to {end_date}")
             
-            print(f"\n📈 Overall PnL for {wallet_address[:8]}: {total_wallet_pnl:.4f} SOL (ROI: {overall_roi:.2f}%)")
+            #print(f"\n📈 Overall PnL for {wallet_address[:8]}: {total_wallet_pnl:.4f} SOL (ROI: {overall_roi:.2f}%)")
             
             return {
                 'pnl': total_wallet_pnl,
@@ -436,33 +436,3 @@ class WalletPNL:
             return None
                     
 
-class Main:
-    def __init__(self):
-        self.w = WalletPNL()
-
-    async def run(self):
-        address = "F7RV6aBWfniixoFkQNWmRwznDj2vae2XbusFfvMMjtbE"
-        data = await self.w.calculate_pnl(wallet_address=address)
-        
-        if data:
-            # Calculate overall ROI if not already in data
-            overall_roi = 0
-            if 'overall_roi' not in data and 'last_100_tx_pnl' in data and data.get('average_entry_per_trade', 0) > 0:
-                sol_spent = data.get('average_entry_per_trade', 0) * data.get('trades_won', 0) + data.get('trades_loss', 0)
-                if sol_spent > 0:
-                    overall_roi = (data['last_100_tx_pnl'] / sol_spent) * 100
-            else:
-                overall_roi = data.get('overall_roi', 0)
-            
-            print("\n=== SUMMARY ===")
-            print(f"📊 PnL: {data['last_100_tx_pnl']:.4f} SOL")
-            print(f"📈 ROI: {overall_roi:.2f}%")
-            print(f"🪙 Tokens Traded: {data['tokens_traded']}")
-            print(f"✅ Winning Trades: {data['trades_won']}")
-            print(f"❌ Losing Trades: {data['trades_loss']}")
-            print(f"💰 Average SOL per trade: {data['average_entry_per_trade']:.4f}")
-            
-
-if __name__ == "__main__":
-    main = Main()
-    asyncio.run(main.run())
