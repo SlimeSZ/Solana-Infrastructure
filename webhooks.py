@@ -143,11 +143,11 @@ class MultiAlert:
                 for wallet_address, data in wallet_data.items():
                     wallet_analysis += (
                         f"`Wallet {wallet_address[:8]}`...\n"
-                        f"💰 Holding: {data['holding_percentage']:.2f}%\n"
                         f"📈 PNL: {data['pnl']:.4f} SOL\n"
                         f"🎯 Tokens Traded: {data['tokens_traded']}\n"
                         f"✅ Wins: {data['wins']}\n"
                         f"❌ Losses: {data['losses']}\n"
+                        f"    Avg Entry: {data['avg_entry']}\n"
                         f"{'─' * 20}\n"
                     )
                 if wallet_analysis:

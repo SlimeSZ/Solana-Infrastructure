@@ -796,8 +796,7 @@ class ScrapeAD:
                                                     wallet_pnl = await self.wallet_pnl.calculate_pnl(wallet_address)
                                                     if wallet_pnl:
                                                         wallet_analysis[wallet_address] = {
-                                                        'holding_percentage': wallet_info['percentage'],
-                                                        'pnl': wallet_pnl['last_100_tx_pnl'],
+                                                        'pnl': wallet_pnl['pnl'],
                                                         'tokens_traded': wallet_pnl['tokens_traded'],
                                                         'wins': wallet_pnl['trades_won'],
                                                         'losses': wallet_pnl['trades_loss'],
