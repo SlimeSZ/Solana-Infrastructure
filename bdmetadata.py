@@ -87,13 +87,24 @@ class BuySellTradeUniqueData:
            
            buy_30m_change = data.get('buy_30m_change_percent', 0)
 
+           sell_30m = data.get('sell_30m', 0)
+           vol_30m = data.get('volume_30m_usd', 0)
+           price_change_m30 = data.get('price_change_30m_percent', 0)
+           m30_vol_change = data.get('volume_30m_change_percent', 0)
+
            return {
                 'holders': data.get('holder', 0),  # Should be 816 from API
                 'new_unique_wallets_30_min_count': data.get('unique_wallet_history_30m', 0),  # Should be 425 from API
                 'new_unique_wallets_30_min_percent_change': data.get('unique_wallet_30m_change_percent', 0),  # Should be 163.52%
                 'trade_30_min_percent_change': data.get('trade_30m_change_percent', 0),  # Should be 54.83%
                 'buy_30_min_percent_change': data.get('buy_30m_change_percent', 0),  # Should be 59.80%
-                'sell_30_min_percent_change': data.get('sell_30m_change_percent', 0)  # Should be 49.11%
+                'sell_30_min_percent_change': data.get('sell_30m_change_percent', 0),
+                'm30_trade': trade_30m,
+                'm30_buys': buy_30m,
+                'm30_sells': sell_30m,
+                'm30_vol': vol_30m,
+                'm30_price_change': price_change_m30,
+                'm30_vol_change': m30_vol_change
             }
 
        except Exception as e:
@@ -168,12 +179,13 @@ class Main:
         self.bstd = BuySellTradeUniqueData()
         self.tkn = Tokenomics()
 
-        self.ca = ""
+        self.ca = "Hn96YecrtMpmqidh4tE43hmnQT5wpagZzC2PUSVzpump"
     
     async def run(self):
-        data = await self.bstd.fetch(ca=self.ca)
+        data = await self.tkn.process(ca=self.ca)
         if data:
-            print(data)
+            mc = data.get('marketcap', 0)
+            print(mc)
 
 if __name__ == "__main__":
     main = Main()

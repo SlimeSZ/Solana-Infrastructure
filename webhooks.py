@@ -63,9 +63,60 @@ class MultiAlert:
     def __init__(self):
         pass
 
-    async def multialert_webhook(self, token_name, ca, marketcap, m5_vol, liquidity, telegram, twitter, photon_link, bull_x_link, dex_link, swt_count, swt_buys, swt_sells, fresh_count, fresh_buys, fresh_sells, last_3_tx, holder_count, dev_holding_percentage, token_migrated, passes_soulscanner, passes_bundlebot, dex_paid, token_age, top_10_holding_percentage, holders_over_5, wallet_data, m30_vol, m30_vol_change, new_unique_wallets_30m, new_unique_wallet_30m_change, trade_change_30m, buy_change_30m, sell_change_30m, channel_text, sniper_percent, comp_score, websites_data=None):
+    async def multialert_webhook(self, 
+                        token_name, 
+                        ca, 
+                        websites_data, 
+                        marketcap, 
+                        m5_vol, 
+                        liquidity, 
+                        telegram, 
+                        twitter, 
+                        photon_link, 
+                        bull_x_link, 
+                        dex_link, 
+                        swt_count, 
+                        swt_buys, 
+                        swt_sells, 
+                        fresh_count, 
+                        fresh_buys, 
+                        fresh_sells, 
+                        last_3_tx, 
+                        holder_count, 
+                        dev_holding_percentage, 
+                        token_migrated, 
+                        passes_soulscanner, 
+                        passes_bundlebot, 
+                        dex_paid, 
+                        token_age, 
+                        time_to_bond, 
+                        top_10_holding_percentage, 
+                        holders_over_5, 
+                        wallet_data, 
+                        m30_vol, 
+                        m30_vol_change, 
+                        new_unique_wallets_30m, 
+                        new_unique_wallet_30m_change, 
+                        trade_change_30m, 
+                        buy_change_30m, 
+                        sell_change_30m, 
+                        channel_text, 
+                        sniper_percent, 
+                        dev_token_created, 
+                        dev_rug_count, 
+                        dev_successful_count, 
+                        dev_rug_rate, 
+                        support, 
+                        support_strength, 
+                        resistance, 
+                        resistance_strength, 
+                        ob_top, 
+                        ob_bottom, 
+                        ob_volume, 
+                        ob_strength, 
+                        scans, 
+                        comp_score):
         try:
-            #place holders
             new_unique_wallet_30m_change = new_unique_wallet_30m_change or 0
             trade_change_30m = trade_change_30m or 0
             buy_change_30m = buy_change_30m or 0
@@ -93,9 +144,10 @@ class MultiAlert:
                             f"📊 5m Volume: ${m5_vol:,.2f}\n"
                             f"📊 30m Volume: ${m30_vol:,.2f} ({m30_vol_change:.2f}%)\n"
                             f" `Total Trades {tradeplaceholder} by {trade_change_30m:.2f}% last 30 min`\n"
-                            f" `Buys {buyplaceholder} {buy_change_30m:.2f} last 30 min `\n"
-                            f" `Sells {sellplaceholder} {sell_change_30m:.2f} last 30 min`\n"
+                            f" `Buys {buyplaceholder} {buy_change_30m:.2f}% last 30 min `\n"
+                            f" `Sells {sellplaceholder} {sell_change_30m:.2f}% last 30 min`\n"
                             f"⏰ `Token Age`: {token_age['value']} {token_age['unit']}\n" 
+                            f" `Time to Bond`: {time_to_bond}"
                         ),
                         "inline": False
                     },
@@ -129,8 +181,9 @@ class MultiAlert:
                             f"🔒 Soul Scanner: {'✅' if passes_soulscanner else '❌'}\n"
                             f"🔍 Bundle Bot: {'✅' if passes_bundlebot else '❌'}\n"
                             f"💰 DEX Paid: {'✅' if dex_paid else '❌'}\n"
-                            f"🔄 Token Migrated: {'⚠️' if token_migrated else '✅'}\n"
+                            f"🔄 Token Migrated: {'✅' if token_migrated else '❌'}\n"
                             f"🎯 Sniper Percent: {sniper_percent:.2f}% {sniperplaceholder}\n"
+                            f"👁️ Scans: {scans}\n"
                         ),
                         "inline": False
                     }
@@ -147,7 +200,7 @@ class MultiAlert:
                         f"🎯 Tokens Traded: {data['tokens_traded']}\n"
                         f"✅ Wins: {data['wins']}\n"
                         f"❌ Losses: {data['losses']}\n"
-                        f"    Avg Entry: {data['avg_entry']}\n"
+                        f"    Avg Entry: {data['avg_entry']:.2f} SOL\n"
                         f"{'─' * 20}\n"
                     )
                 if wallet_analysis:
@@ -156,6 +209,23 @@ class MultiAlert:
                         "value": wallet_analysis[:1024],
                         "inline": False
                     })
+            
+            # Add Dev History section if available
+            if dev_token_created and dev_rug_count is not None and dev_successful_count is not None and dev_rug_rate is not None:
+                # Format rug rate as percentage
+                rug_rate_percentage = dev_rug_rate * 100 if isinstance(dev_rug_rate, (int, float)) else 0
+                
+                dev_analysis = (
+                    f"Tokens Created: `{dev_token_created}`\n"
+                    f"Rugs: `{dev_rug_count}` || `{rug_rate_percentage:.2f}%`\n"
+                    f"Successful: `{dev_successful_count}`"
+                )
+                
+                embed["fields"].append({
+                    "name": "👨‍💻 Dev Wallet History",
+                    "value": dev_analysis,
+                    "inline": False
+                })
 
             if last_3_tx:
                 tx_summary = ""
@@ -167,6 +237,32 @@ class MultiAlert:
                         "value": tx_summary[:1024],
                         "inline": False
                     })
+
+            if support and resistance:
+                sr_report = (
+                    f"Support MC: `${support:.2f}`\n"
+                    f"Support lvl Strength: `{support_strength:.2f}%`\n"
+                    f"Resistance MC: `${resistance:.2f}`\n"
+                    f"Resistance lvl Strength: `{resistance_strength:.2f}%`"
+                )
+                embed["fields"].append({
+                    "name": "🎯Support/Resistance Levels🎯",
+                    "value": sr_report,
+                    "inline": False
+                })
+            
+            if ob_top and ob_volume: 
+                ob_strengthh = ob_strength * 100
+                ob_report = (
+                    f"Orderblock: `${ob_bottom:.2f} - ${ob_top:.2f}`\n"
+                    f"Orderblock Vol: `{ob_volume:.2f}`\n"
+                    f"Orderblock Strength: `{ob_strengthh:.2f}%`"
+                )
+                embed["fields"].append({
+                    "name": "🎯Orderblock Levels🎯",
+                    "value": ob_report,
+                    "inline": False
+                })
 
             links = (
                 f"🔗 DexScreener: [Chart]({dex_link})\n"
@@ -210,7 +306,7 @@ class MultiAlert:
                 "username": "Multi Alert Bot",
                 "embeds": [embed]
             }
-
+        
             # Send webhook
             async with aiohttp.ClientSession() as session:
                 async with session.post(MULTIALERT_WEBHOOK, json=data) as response:

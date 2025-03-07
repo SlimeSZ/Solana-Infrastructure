@@ -1,7 +1,5 @@
 from getohlcv import OH
 from supportresistance import SupportResistance
-from dexapi import DexScreenerAPI
-from marketcap import MarketcapFetcher
 import asyncio
 import pandas as pd
 import numpy as np
@@ -9,344 +7,278 @@ import aiohttp
 from webhooks import TradeWebhook
 from env import OB_WEBHOOK
 from datetime import datetime
-from backupsupply import Supply
+from marketcapfinal import Price, Supply, Marketcap
 
 class OrderBlock:
     def __init__(self):
         self.sr = SupportResistance()  # for helper methods import
         self.o = OH()
-        self.d = DexScreenerAPI()
-        self.pair_address = None
-        self.rpc = MarketcapFetcher()
-        self.timeframe = "1min"  # Default timeframe
-        self.ca = "7vGQxnACKAogWbSE1uEjdPuEJ5trvqzYVzU2VW42pump"
-        self.backup_supply = Supply()
+        self.timeframe = "1min"  
         self.active_obs = []
-        self.short_timeframes = ["1min", "30s", "10s", "1s"]
-        self.longer_timeframes = ["5min", "10min", "30min", "1h", "1min"]
-
-    async def get_data(self, pair_address, ca, age_minutes=81):
-        """Get OHLCV data using appropriate timeframe"""
-        try:
-            if not ca:
-                print("Error: Contract address not provided")
-                return None
-
-
-            data = await self._set_timeframe(pair_address, age_minutes)
-            return data
-
-        except Exception as e:
-            print(f"Error in get_data: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return None
+        self.short_timeframes = ["1min", "5min", "10min"]  # Reduced set to avoid redundancy
+        self.longer_timeframes = ["5min", "10min", "30min"]  # Reduced set to avoid redundancy
+        self.data_cache = {}  # Cache for OHLCV data
+        self.ob_cache = {}    # Cache for OB results
+        self.last_analysis_time = {}  # Track when we last analyzed each token
+        self.s = Supply()
+        self.p = Price()
+        self.mc = Marketcap()
         
-    async def mark_ob(self, ca, data):
+    async def mark_ob(self, ca, data, supply):
+        """Analyze OHLCV data to identify order blocks"""
         try:
             print("\n=== Starting mark_ob ===")
             if not ca or not data:
                 print("Error: Missing required parameters")
                 return None
-
-            supply = await self.rpc.get_token_supply(ca)
             if not supply:
-                print("Error: Failed to get token supply from main, trying backup")
                 try:
-                    supply = await self.backup_supply.supply(ca)
+                    supply = await self.s.supply(ca)
+                    if not supply:
+                        print("Error: Could not get token supply from any source")
+                        return None
                 except Exception as e:
-                    print(str(e))
-
-                
-
-            #print(f"Got supply: {supply}")
+                    print(f"Error in backup supply: {str(e)}")
+                    return None
+                                
             df = await self.sr._convert(data, supply)
+            
             if df is None:
                 print("Error: Data conversion failed")
                 return None
-
-            #print("\nDataFrame first few rows:")
-            #print(df.head())
-
-            if not df.empty and all(col in df.columns for col in ['high', 'low']):
-                df['high_mc'] = df['high']
-                df['low_mc'] = df['low']
-                ath = df['high'].max()
-                if pd.isna(ath):
-                    print("Error: Invalid ATH calculation")
-                    return None
-
-                ob_top = []
-                ob_bottom = []
-                ob_volume = []
-                ob_strength = []
                 
-                print("\n=== Beginning OB Detection ===")
-                lookback = 150  # Only look at last 10 candles
-                start_idx = max(3, len(df) - lookback)
-                print(f"Analyzing last {lookback} candles...")
-                
-                # Calculate volume moving average
-                df['vol_sum_3'] = df['volume'].rolling(window=3, min_periods=1).sum()
-
-                ob_count = 0
-                for i in range(start_idx, len(df)-1):
-                    #print(f"\n--- Analyzing Candle {i} ---")
-                    curr_candle = df.iloc[i]
-                    prev_candle = df.iloc[i-3:i]
-                    next_candle = df.iloc[i+1]
-                    
-                    curr_vol = curr_candle['volume']
-                    prev_vol_mean = prev_candle['volume'].mean()
-                    high_vol = curr_vol > prev_vol_mean * 0.1 #10% more vol than prev candle
-
-                    #print(f"Current OHLC: {curr_candle['open']:.8f}, {curr_candle['high']:.8f}, {curr_candle['low']:.8f}, {curr_candle['close']:.8f}")
-                    #print(f"Next Close: {next_candle['close']:.8f}")
-                    #print(f"Volume Check: {curr_vol:.2f} vs {prev_vol_mean:.2f} (Mean) - High Vol: {high_vol}")
-                    #print(f"Bullish?: {curr_candle['close'] > curr_candle['open']}")
-                    #print(f"Breakout?: {next_candle['close'] > curr_candle['high']}")
-
-                    # Check for bullish order block
-                    if (next_candle['close'] > curr_candle['high'] 
-                        and high_vol and curr_candle['close'] > curr_candle['open']):
-                        ob_count += 1
-                        print(f"\n🟢 Bullish Order Block #{ob_count} Detected!")
-                        print(f"MC Range: ${curr_candle['low']:.8f} - ${curr_candle['high']:.8f}")
-                        print(f"Volume: {curr_vol:.2f}")
-                        
-                        ob_top.append(curr_candle['high'])
-                        ob_bottom.append(curr_candle['low'])
-                        ob_volume.append(curr_candle['vol_sum_3'])
-                        
-                        strength = min(curr_vol, prev_vol_mean) / max(curr_vol, prev_vol_mean)
-                        ob_strength.append(strength)
-                        print(f"OB Strength: {strength:.2%}")
-                        ob_tops_sorted = sorted(ob_top)
-
-                #print(f"\nAnalysis Complete: Found {ob_count} Order Blocks")
-
-                return {
-                    'ob_top': ob_top,
-                    'ob_bottom': ob_bottom,
-                    'ob_volume': ob_volume,
-                    'ob_strength': ob_strength,
-                    'ob_count': ob_count,
-                    'total_candles_analyzed': len(df)-4
-                }
-            else:
-                print("Error: Invalid DataFrame structure")
+            if df.empty:
+                print("Error: Empty DataFrame created")
                 return None
+                
+            required_columns = ['high', 'low', 'open', 'close', 'volume']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                print(f"Error: DataFrame missing columns: {missing_columns}")
+                return None
+
+            # Continue with OB detection logic
+            df['high_mc'] = df['high']
+            df['low_mc'] = df['low']
+            
+            ob_top = []
+            ob_bottom = []
+            ob_volume = []
+            ob_strength = []
+            
+            print("\n=== Beginning OB Detection ===")
+            lookback = 150  # Only look at last 150 candles
+            start_idx = max(3, len(df) - lookback)
+            print(f"Analyzing last {lookback} candles...")
+            
+            # Calculate volume moving average
+            df['vol_sum_3'] = df['volume'].rolling(window=3, min_periods=1).sum()
+
+            ob_count = 0
+            for i in range(start_idx, len(df)-1):
+                curr_candle = df.iloc[i]
+                prev_candle = df.iloc[i-3:i]
+                next_candle = df.iloc[i+1]
+                
+                curr_vol = curr_candle['volume']
+                prev_vol_mean = prev_candle['volume'].mean()
+                high_vol = curr_vol > prev_vol_mean * 0.1  # 10% more vol than prev candle
+
+                # Check for bullish order block
+                if (next_candle['close'] > curr_candle['high'] 
+                    and high_vol and curr_candle['close'] > curr_candle['open']):
+                    ob_count += 1
+                    print(f"\n🟢 Bullish Order Block #{ob_count} Detected!")
+                    print(f"MC Range: ${curr_candle['low']:.8f} - ${curr_candle['high']:.8f}")
+                    print(f"Volume: {curr_vol:.2f}")
+                    
+                    ob_top.append(curr_candle['high'])
+                    ob_bottom.append(curr_candle['low'])
+                    ob_volume.append(curr_candle['vol_sum_3'])
+                    
+                    strength = min(curr_vol, prev_vol_mean) / max(curr_vol, prev_vol_mean)
+                    ob_strength.append(strength)
+                    print(f"OB Strength: {strength:.2%}")
+
+            return {
+                'ob_top': ob_top,
+                'ob_bottom': ob_bottom,
+                'ob_volume': ob_volume,
+                'ob_strength': ob_strength,
+                'ob_count': ob_count,
+                'total_candles_analyzed': len(df) - 4
+            }
 
         except Exception as e:
             print(f"Error in mark_ob: {str(e)}")
             import traceback
             traceback.print_exc()
             return None
-        
-    async def _set_timeframe(self, pair_address, age_minutes):
-        """
-        Try different timeframes and return the one with most order blocks.
-        """
+    
+
+
+    async def update_order_blocks(self, ca, pair_address, token_name, supply, data, short_timeframes=None, longer_timeframes=None):
         try:
-            timeframes_to_try = self.short_timeframes if age_minutes < 80 else self.longer_timeframes
-            
-            print(f"\n=== Trying timeframes for {age_minutes} min old token ===")
-            print(f"Available timeframes: {timeframes_to_try}")
-            
-            best_data = None
-            best_result = None
-            best_ob_count = 0
-            
-            for tf in timeframes_to_try:
-                print(f"\nAttempting timeframe: {tf}")
-                self.timeframe = tf
+            if not pair_address:
+                print("Error: No pair address provided")
+                return None  # Return None instead of False for consistency
                 
-                # Get OHLCV data
-                data = await self.o.fetch(timeframe=tf, pair_address=pair_address)
-                if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
-                    print(f"Failed to get OHLCV for {tf}")
-                    continue
-                    
-                if not isinstance(data, dict) or not data:
-                    print(f"No valid data for {tf}, trying next timeframe...")
-                    continue
-                    
-                # Try to find OBs with this data
-                result = await self.mark_ob(ca=self.ca, data=data)
-                if result and result.get('ob_count', 0) > 0:
-                    ob_count = result.get('ob_count', 0)
-                    print(f"✅ Found {ob_count} OBs using {tf} timeframe")
-                    
-                    # Keep track of the timeframe with the most OBs
-                    if ob_count > best_ob_count:
-                        best_data = data
-                        best_result = result
-                        best_ob_count = ob_count
-                else:
-                    print(f"No OBs found with {tf}, trying next timeframe...")
+            # Extract CA from token name if it contains it
+            if not ca and token_name and "(" in token_name:
+                try:
+                    ca_part = token_name.split("(")[1].split(")")[0]
+                    if ca_part.startswith("0x") or len(ca_part) > 30:
+                        ca = ca_part
+                        print(f"Extracted CA from token name: {ca}")
+                except:
+                    print("Could not extract CA from token name")
             
-            if best_data:
-                print(f"\n✅ Best timeframe had {best_ob_count} order blocks")
-                return best_data
-            else:
-                print("❌ No OBs found with any timeframe")
-                return None
-
-        except Exception as e:
-            print(f"Error in _set_timeframe: {str(e)}")
-            return None
-
-
-    async def run(self, pair_address, token_name):
-        """Main loop combining OB updates and entry monitoring"""
-        #print(f"\nStarting Order Block strategy for {self.ca}")
-        #print("Initial order block scan...")
-        # Do initial scan right away
-        await self.update_order_blocks(pair_address, token_name)
-        
-        last_ob_update = datetime.now()
-        update_interval = 180  # 3 minutes
-        
-        while True:
-            try:
-                #print("\nChecking conditions...")
-                # Check if it's time to update order blocks
-                if (datetime.now() - last_ob_update).seconds >= update_interval:
-                    print("\nTime to update order blocks...")
-                    await self.update_order_blocks(pair_address, token_name)
-                    last_ob_update = datetime.now()
+            # If we STILL don't have a CA, use pair_address as CA to avoid errors
+            if not ca:
+                print(f"No CA available, using pair address as fallback: {pair_address}")
+                ca = pair_address
                 
-                # Monitor entries if we have active order blocks
-                if self.active_obs:
-                    print(f"\nMonitoring {len(self.active_obs)} active order blocks...")
-                else:
-                    print("\nNo active order blocks yet...")
+            # Use provided timeframes or fall back to defaults
+            _short_timeframes = short_timeframes or self.short_timeframes
+            _longer_timeframes = longer_timeframes or self.longer_timeframes
                 
-                await asyncio.sleep(45)
-                
-            except Exception as e:
-                print(f"Error in main loop: {str(e)}")
-                await asyncio.sleep(45)
-
-    async def update_order_blocks(self, pair_address, token_name):
-        """Scan for new order blocks and add to active list"""
-        data = await self.get_data(pair_address, ca=self.ca)
-        if not data:
-            return False
+            # Create cache key - use pair_address if no token_name
+            cache_key = f"{pair_address}_{token_name if token_name else 'unknown'}"
             
-        result = await self.mark_ob(ca=self.ca, data=data)
-        if result and result['ob_count'] > 0:
-            # Track new order blocks to add
-            new_obs = []
-            new_ob_found = False
+            # Check if we've analyzed this recently (within 2 minutes)
+            current_time = datetime.now()
+            if cache_key in self.last_analysis_time:
+                time_diff = (current_time - self.last_analysis_time[cache_key]).total_seconds()
+                if time_diff < 120:  # 2 minutes
+                    if cache_key in self.ob_cache:
+                        print(f"Using cached OB results for {token_name} (age: {time_diff:.0f}s)")
+                        return self.ob_cache[cache_key]
             
-            # Check each detected order block
-            for i in range(result['ob_count']):
-                new_ob = {
-                    'top': result['ob_top'][i],
-                    'bottom': result['ob_bottom'][i],
-                    'volume': result['ob_volume'][i],
-                    'strength': result['ob_strength'][i],
-                    'time_found': datetime.now()
-                }
+            # Process new order blocks
+            if hasattr(self, 'active_obs') and self.active_obs:
+                print(f"Processing potential new OBs for {token_name}")
                 
-                # Check if this is a duplicate of an existing order block
-                is_duplicate = False
-                for existing_ob in self.active_obs:
-                    # If top and bottom are within 1% of an existing OB, consider it a duplicate
-                    top_match = abs(existing_ob['top'] - new_ob['top']) / existing_ob['top'] < 0.01
-                    bottom_match = abs(existing_ob['bottom'] - new_ob['bottom']) / existing_ob['bottom'] < 0.01
-                    
-                    if top_match and bottom_match:
-                        is_duplicate = True
+                # Track new order blocks to add
+                new_obs = []
+                new_ob_found = False
+                
+                # Get the temporary OBs from timeframe selection
+                temp_result = None
+                for tf in _short_timeframes + _longer_timeframes:
+                    temp_key = f"{pair_address}_{tf}"
+                    if temp_key in self.ob_cache:
+                        temp_result = self.ob_cache[temp_key]
                         break
+                        
+                if not temp_result:
+                    # If we don't have cached results, get them now
+                    temp_result = await self.mark_ob(ca=ca, data=data, supply=supply)
                 
-                # Only add if not a duplicate
-                if not is_duplicate:
-                    new_obs.append(new_ob)
-                    new_ob_found = True
-                    print(f"New unique order block added: ${new_ob['bottom']:.2f} - ${new_ob['top']:.2f}")
-            
-            # Add new OBs to active list
-            if new_obs:
-                self.active_obs.extend(new_obs)
+                if temp_result and temp_result.get('ob_count', 0) > 0:
+                    # Check each detected order block
+                    for i in range(temp_result['ob_count']):
+                        new_ob = {
+                            'top': temp_result['ob_top'][i],
+                            'bottom': temp_result['ob_bottom'][i],
+                            'volume': temp_result['ob_volume'][i],
+                            'strength': temp_result['ob_strength'][i],
+                            'time_found': datetime.now()
+                        }
+                        
+                        # Check if this is a duplicate of an existing order block
+                        is_duplicate = False
+                        for existing_ob in self.active_obs:
+                            # If top and bottom are within 1% of an existing OB, consider it a duplicate
+                            top_match = abs(existing_ob['top'] - new_ob['top']) / existing_ob['top'] < 0.01
+                            bottom_match = abs(existing_ob['bottom'] - new_ob['bottom']) / existing_ob['bottom'] < 0.01
+                            
+                            if top_match and bottom_match:
+                                is_duplicate = True
+                                break
+                        
+                        # Only add if not a duplicate
+                        if not is_duplicate:
+                            new_obs.append(new_ob)
+                            new_ob_found = True
+                            print(f"New unique order block added: ${new_ob['bottom']:.2f} - ${new_ob['top']:.2f}")
+                    
+                    # Add new OBs to active list
+                    if new_obs:
+                        self.active_obs.extend(new_obs)
+                        
+                        # Only send webhook if new OBs were found
+                        if new_ob_found:
+                            # Prepare webhook data with only new OBs
+                            webhook_data = {
+                                'ob_top': [ob['top'] for ob in new_obs],
+                                'ob_bottom': [ob['bottom'] for ob in new_obs],
+                                'ob_volume': [ob['volume'] for ob in new_obs],
+                                'ob_strength': [ob['strength'] for ob in new_obs],
+                                'ob_count': len(new_obs),
+                            }
+                            
+                            # Send webhook alert for new OBs
+                            webhook = TradeWebhook()
+                            await webhook.send_ob_webhook(OB_WEBHOOK, webhook_data, token_name, ca=ca)
+                            print(f"Sent webhook for {len(new_obs)} new order blocks")
+                    else:
+                        print("No new unique order blocks found")
+                else:
+                    # No OBs found, initialize if first run
+                    if not hasattr(self, 'active_obs') or self.active_obs is None:
+                        self.active_obs = []
+                    print("No order blocks found in this analysis")
+            else:
+                # First run, initialize active_obs from scratch
+                result = await self.mark_ob(ca=ca, data=data, supply=supply)
                 
-                # Only send webhook if new OBs were found
-                if new_ob_found:
-                    # Prepare webhook data with only new OBs
+                if result and result.get('ob_count', 0) > 0:
+                    # Create initial OBs
+                    self.active_obs = []
+                    for i in range(result['ob_count']):
+                        self.active_obs.append({
+                            'top': result['ob_top'][i],
+                            'bottom': result['ob_bottom'][i],
+                            'volume': result['ob_volume'][i],
+                            'strength': result['ob_strength'][i],
+                            'time_found': datetime.now()
+                        })
+                    
+                    print(f"Successfully found {len(self.active_obs)} initial order blocks")
+                    
+                    # Send webhook for initial OBs
                     webhook_data = {
-                        'ob_top': [ob['top'] for ob in new_obs],
-                        'ob_bottom': [ob['bottom'] for ob in new_obs],
-                        'ob_volume': [ob['volume'] for ob in new_obs],
-                        'ob_strength': [ob['strength'] for ob in new_obs],
-                        'ob_count': len(new_obs),
+                        'ob_top': result['ob_top'],
+                        'ob_bottom': result['ob_bottom'],
+                        'ob_volume': result['ob_volume'],
+                        'ob_strength': result['ob_strength'],
+                        'ob_count': result['ob_count'],
                     }
                     
-                    # Send webhook alert for new OBs
                     webhook = TradeWebhook()
-                    await webhook.send_ob_webhook(OB_WEBHOOK, webhook_data, token_name, ca=self.ca)
-                    print(f"Sent webhook for {len(new_obs)} new order blocks")
-            else:
-                print("No new unique order blocks found")
+                    await webhook.send_ob_webhook(OB_WEBHOOK, webhook_data, token_name, ca=ca)
+                    print(f"Sent initial webhook for {result['ob_count']} order blocks")
+                else:
+                    print("No initial order blocks found")
+                    self.active_obs = []
             
-            return True
-        else:
-            print("No order blocks found")
+            # Cache the results and update timestamp
+            result_data = {
+                'active_obs': self.active_obs,
+                'ob_count': len(self.active_obs)
+            }
+            self.ob_cache[cache_key] = result_data
+            self.last_analysis_time[cache_key] = current_time
+            
+            # Return the complete OB data for multialert
+            return result_data
+            
+        except Exception as e:
+            print(f"Error in update_order_blocks: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
         
-    async def _set_timeframe(self, pair_address, age_minutes):
-        """
-        Try different timeframes and return the one with most order blocks.
-        """
-        try:
-            timeframes_to_try = self.short_timeframes if age_minutes < 80 else self.longer_timeframes
-            
-            print(f"\n=== Trying timeframes for {age_minutes} min old token ===")
-            print(f"Available timeframes: {timeframes_to_try}")
-            
-            best_data = None
-            best_result = None
-            best_ob_count = 0
-            
-            for tf in timeframes_to_try:
-                print(f"\nAttempting timeframe: {tf}")
-                self.timeframe = tf
-                
-                # Get OHLCV data
-                data = await self.o.fetch(timeframe=tf, pair_address=pair_address)
-                if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
-                    print(f"Failed to get OHLCV for {tf}")
-                    continue
-                    
-                if not isinstance(data, dict) or not data:
-                    print(f"No valid data for {tf}, trying next timeframe...")
-                    continue
-                    
-                # Try to find OBs with this data
-                result = await self.mark_ob(ca=self.ca, data=data)
-                if result and result.get('ob_count', 0) > 0:
-                    ob_count = result.get('ob_count', 0)
-                    print(f"✅ Found {ob_count} OBs using {tf} timeframe")
-                    
-                    # Keep track of the timeframe with the most OBs
-                    if ob_count > best_ob_count:
-                        best_data = data
-                        best_result = result
-                        best_ob_count = ob_count
-                else:
-                    print(f"No OBs found with {tf}, trying next timeframe...")
-            
-            if best_data:
-                print(f"\n✅ Best timeframe had {best_ob_count} order blocks")
-                return best_data
-            else:
-                print("❌ No OBs found with any timeframe")
-                return None
-
-        except Exception as e:
-            print(f"Error in _set_timeframe: {str(e)}")
-            return None 
-
     async def monitor_ob_entry(self, token_name, ca, pair_address, current_mc):
         """Check if current marketcap is in any active order block zones"""
         try:
@@ -366,14 +298,14 @@ class OrderBlock:
                     
                     # Send webhook for OB entry
                     webhook = TradeWebhook()
-                    await webhook.send_ob_webhook(OB_WEBHOOK, {
-                    'event': 'ob_zone_entered',
-                    'current_mc': current_mc,
-                    'ob_bottom': ob_bottom,
-                    'ob_top': ob_top,
-                    'ob_strength': ob['strength'],
-                    'volume': ob['volume']
-                }, token_name, ca)
+                    await webhook.send_ob_entry_webhook(OB_WEBHOOK, {
+                        'event': 'ob_zone_entered',
+                        'current_mc': current_mc,
+                        'ob_bottom': ob_bottom,
+                        'ob_top': ob_top,
+                        'ob_strength': ob['strength'],
+                        'volume': ob['volume']
+                    }, token_name, ca)
                     
                     return True
                     
@@ -382,16 +314,3 @@ class OrderBlock:
         except Exception as e:
             print(f"Error in monitor_ob_entry: {str(e)}")
             return False
-
-
-        
-class Main:
-    def __init__(self):
-        self.ob = OrderBlock()
-
-    async def run(self):
-        await self.ob.run()  # This runs the continuous OB scanning and monitoring
-
-if __name__ == "__main__":
-    main = Main()
-    asyncio.run(main.run())

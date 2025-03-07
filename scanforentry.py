@@ -5,10 +5,11 @@ from largebuys import scan_trades
 from webhooks import TradeWebhook
 from ob import OrderBlock
 from datetime import datetime
+from marketcapfinal import Supply, Price, Marketcap
+
 
 class MarketcapMonitor:
     def __init__(self):
-        self.rpc = MarketcapFetcher()
         self.sr = SupportResistance()
         self.ob = OrderBlock()
         self.webhook = TradeWebhook()
@@ -19,70 +20,10 @@ class MarketcapMonitor:
         self.active_sr = None
         self.sr_last_update = None
         self.sr_update_interval = 1800  # 30 minutes
+        self.s = Supply()
+        self.p = Price()
+        self.mc = Marketcap()
 
-    async def initialize(self, token_name, ca, pair_address, age_minutes):
-        """Initialize all components concurrently"""
-        print("\n=== Initializing Market Monitor ===")
-        
-        # Start concurrent initialization
-        init_tasks = [
-            asyncio.create_task(self.update_sr_levels(pair_address, token_name, ca, age_minutes, initial=True)),
-            asyncio.create_task(self.ob.update_order_blocks(pair_address, token_name)),
-            asyncio.create_task(self.rpc.calculate_marketcap(ca))  # Get initial MC
-        ]
-        
-        results = await asyncio.gather(*init_tasks, return_exceptions=True)
-        
-        # Process results
-        sr_success, ob_success, initial_mc = False, False, None
-        
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                print(f"Initialization task {i} failed: {str(result)}")
-            else:
-                if i == 0:  # SR levels
-                    sr_success = bool(result)
-                elif i == 1:  # OB update
-                    ob_success = bool(result)
-                else:  # Initial MC
-                    initial_mc = result
-
-        print("\n=== Initialization Results ===")
-        print(f"{token_name}")
-        print(f"SR Levels: {'✅' if sr_success else '❌'}")
-        print(f"Order Blocks: {'✅' if ob_success else '❌'}")
-        print(f"Initial MC: {'✅' if initial_mc else '❌'} {f'${initial_mc:.2f}' if initial_mc else ''}")
-        
-        return sr_success or ob_success  # Continue if at least one system is working
-
-    async def update_sr_levels(self, pair_address, token_name, ca, age_minutes, initial=False):
-        """Update support and resistance levels with optimized timeframe selection"""
-        try:
-            if initial:
-                print("\n📊 Initial SR level calculation...")
-            else:
-                print("\n📊 Updating SR levels...")
-                
-            # First try shorter timeframe for faster response
-            self.sr.timeframe = "1min"
-            sr_result = await self.sr.get_sr_zones(token_name, ca, pair_address, age_minutes)
-            
-            if not sr_result and not initial:
-                # If update fails, try longer timeframe
-                self.sr.timeframe = "5min"
-                sr_result = await self.sr.get_sr_zones(token_name, ca, age_minutes)
-
-            if sr_result and 'sr_levels' in sr_result:
-                self.active_sr = sr_result['sr_levels']
-                self.sr_last_update = datetime.now()
-                print(f"Support level updated: ${sr_result['sr_levels']['support']['mean']:.2f}")
-                return True
-            else:
-                print("No valid SR levels found")
-                return False
-        except Exception as e:
-            print(f"Error updating SR levels: {str(e)}")
-            return False
 
     async def monitor_marketcap(self, token_name, ca, pair_address, age_minutes=180):
         """Monitor marketcap for both support and OB entries"""

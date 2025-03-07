@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 import pytz
 from getohlcv import OH
-from marketcap import MarketcapFetcher
 from basecg import CoinGeckoTerminal
 from datetime import datetime
 from collections import defaultdict
@@ -13,31 +12,23 @@ from env import BIRDEYE_API_KEY, SR_WEBHOOK
 from webhooks import TradeWebhook
 from dexapi import DexScreenerAPI
 from backupohlcv import OHLCV
-from backupsupply import Supply
 #from scientificnotation import SN
+
+from marketcapfinal import Supply, Price, Marketcap
 
 class SupportResistance:
     def __init__(self):
-        self.rpc = MarketcapFetcher()
         self.ohlcv = OH()
         self.dex = DexScreenerAPI()
         self.s = Supply()
-        self.ca = None
+        self.p = Price()
+        self.mc = Marketcap()
 
-        self.data = None
-        self.timeframe = None
         self.backupohlcv = OHLCV()
         self.current_mc = None
         self.supply = None
-        self.short_timeframes = ["1min", "30s", "10s", "1s"]
-        self.longer_timeframes = ["5min", "10min", "30min", "1h"]
+        
 
-    #helper methods
-    async def _set_supply(self, ca):
-        supply = await self.rpc.get_token_supply(ca)
-        if not supply:
-            return None
-        return supply
     
     def _price_formatter(self, x: float) -> str:
         return f'{x:.2f}'
@@ -61,7 +52,7 @@ class SupportResistance:
     
     async def _set_mc(self, ca):
         try:
-            self.current_mc = await self.rpc.calculate_marketcap(ca)
+            self.current_mc = await self.mc.marketcap(ca)
         except Exception as e:
             print(f"Error setting marketcap {str(e)}")
 
@@ -160,9 +151,8 @@ class SupportResistance:
             traceback.print_exc()
             return None
 
-    async def get_sr(self, data, ca):
+    async def get_sr(self, data, ca, supply):
         try:
-            self.ca = ca
             if data is None:
                 print("Error: Input data is None")
                 return None
@@ -170,29 +160,13 @@ class SupportResistance:
             if not ca:
                 print("Error: Contract address is empty")
                 return None
-
-            print("\n=== Getting Supply ===")
-            # Try RPC first
-            print("1. Attempting RPC supply fetch...")
-            supply = await self.rpc.get_token_supply(ca)
             
             if not supply:
-                print('2. RPC supply failed, attempting backup supply...')
-                backup_supply = await self.s.supply(ca)
-                print(f"3. Backup supply result: {backup_supply}")
-                
-                if backup_supply:
-                    print("4. Using backup supply value")
-                    supply = backup_supply
-                else:
-                    print("5. Both supply fetches failed")
-                    return None
+                supply = self.s.supply(ca)
             
-            print(f"6. Final supply value: {supply}")
             self.supply = supply
             await self._set_mc(ca)
 
-            # Continue with rest of the method...
 
             df = await self._convert(data, supply)
             if df is None:
@@ -376,14 +350,10 @@ class SupportResistance:
             'range_high': mean * 1.05
         }
     
-    async def get_high_vol_zones(self, data, ca):
+    async def get_high_vol_zones(self, data, ca, supply):
         try:
-            supply = await self.rpc.get_token_supply(ca)
             if not supply:
                 supply = await self.s.supply(ca)
-                if not supply:
-                    print(F"both supply fetches failed")
-                    return None
             self.supply = supply
             df = await self._convert(data, supply)
             if df is None:
@@ -438,60 +408,19 @@ class SupportResistance:
             print(str(e))
             return None
         
-    async def _set_timeframe(self, pair_address, age_minutes):
-        """
-        Set appropriate timeframe based on token age and try different timeframes until data is found
-        Returns the first successful data fetch
-        """
-        if age_minutes < 60:  # Less than 1 hour old
-            for tf in self.short_timeframes:  # ["1min", "30s"]
-                print(f"\nTrying timeframe: {tf}")
-                self.timeframe = tf
-                    
-                data = await self.ohlcv.fetch(timeframe=tf, pair_address=pair_address)
-                if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
-                    print(f"Primary OHLCV fetch failed for {tf}, trying backup...")
-                    data = await self.backupohlcv.get(self.ca)
-                    
-                if isinstance(data, dict) and data:
-                    print(f"Successfully fetched data with timeframe: {tf}")
-                    return data
-                    
-        else:  # More than 1 hour old
-            for tf in self.longer_timeframes:  # ["5min", "10min", "30min"]
-                print(f"\nTrying timeframe: {tf}")
-                self.timeframe = tf
-                    
-                    
-                data = await self.ohlcv.fetch(timeframe=tf, pair_address=pair_address)
-                if not data or (isinstance(data, dict) and 'message' in data and 'Internal server error' in data['message']):
-                    print(f"Primary OHLCV fetch failed for {tf}, trying backup...")
-                    data = await self.backupohlcv.get(self.ca)
-                    
-                if isinstance(data, dict) and data:
-                    print(f"Successfully fetched data with timeframe: {tf}")
-                    return data
-                    
-        print("Failed to fetch data with all timeframe attempts")
-        return None
-        
 
-    async def get_sr_zones(self, token_name, ca, pair_address, age_minutes):
+    async def get_sr_zones(self, token_name, ca, supply, ohlcv_data):
         try:
-            self.ca =  ca
-            data = await self._set_timeframe(pair_address, age_minutes)
-            if not data:
-                print("Failed to get data with any timeframe")
+            if not ohlcv_data:
+                print(F"Error passing ohlcv data bot.py --> get_sr_zones")
                 return None
                 
-            self.data = data
-
-            levels = await self.get_sr(data, ca)
+            levels = await self.get_sr(ohlcv_data, ca, supply)
             if not levels:
                 print("Failed to get SR levels")
                 return None
                 
-            unique_ranges = await self.get_high_vol_zones(data, ca)
+            unique_ranges = await self.get_high_vol_zones(ohlcv_data, ca, supply)
             
             support_zone = levels['support']
             resistance_zone = levels['resistance']

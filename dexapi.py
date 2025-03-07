@@ -30,6 +30,7 @@ class DexScreenerAPI:
         self.token_1h_price_change = None
         self.token_6h_price_change = None
         self.token_24h_price_change = None
+        self.token_price = None
 
         self.token_liquidity = None
 
@@ -73,7 +74,7 @@ class DexScreenerAPI:
                         self.token_name = pair.get('baseToken').get('name')
                         
                         self.pool_address = pair.get('pairAddress', '')
-                        print(f"Pair Add: {self.pool_address}")
+                        #print(f"Pair Add: {self.pool_address}")
                         self.pair_created_at = pair.get('pairCreatedAt')
                         found_pair = True
                         #get mc
@@ -104,6 +105,14 @@ class DexScreenerAPI:
                         self.token_1h_price_change = priceChange_data.get('h1', 0)
                         self.token_24h_price_change = priceChange_data.get('h24', 0)
 
+                        price_str = pair.get('priceUsd', '0')
+                        try:
+                            self.token_price = float(price_str)
+                        except (ValueError, TypeError):
+                            print(f"Failed to convert price '{price_str}' to float")
+                            self.token_price = 0
+
+
                         #get liquidity
                         liquidity_data = pair.get('liquidity', {})
                         self.token_liquidity = float(liquidity_data.get('usd', 0))
@@ -127,7 +136,7 @@ class DexScreenerAPI:
                             url = website.get('url', '')
                             if label and url:
                                 self.websites[label] = url
-                        print(f"Websites: Count={self.website_count}, Types={list(self.websites.keys())}")
+                        #print(f"Websites: Count={self.website_count}, Types={list(self.websites.keys())}")
                                 
                         self.token_dex_url = pair.get('url', '')
                         
@@ -141,6 +150,7 @@ class DexScreenerAPI:
                     'token_5m_vol': self.token_5m_vol,
                     'token_1h_vol': self.token_1h_vol,
                     'token_liquidity': self.token_liquidity,
+                    'price': self.token_price,
                     "socials": {
                         "telegram": self.tg_link if self.has_tg else None,
                         "twitter": self.x_link if self.has_x else None
@@ -160,7 +170,7 @@ class DexScreenerAPI:
 async def main():
     async with aiohttp.ClientSession() as session:
         dex = DexScreenerAPI()
-        ca = "367ALJsiyi3gA3MfD8pmkxHCQac1SFTMEaJvJLZppump"
+        ca = "Hn96YecrtMpmqidh4tE43hmnQT5wpagZzC2PUSVzpump"
         result = await dex.fetch_token_data_from_dex(ca)
         print(result)
 

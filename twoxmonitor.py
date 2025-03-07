@@ -1,12 +1,13 @@
 import asyncio
 import aiohttp
+import sqlite3
 from datetime import datetime
-from marketcap import MarketcapFetcher
 from webhooks import MultiAlert
+from marketcapfinal import Marketcap
 
 class TwoXChecker:
     def __init__(self):
-        self.mc = MarketcapFetcher()
+        self.mc = Marketcap()
         self.webhook = MultiAlert()
         self.original_mcs = {}
         self.start_times = {}
@@ -30,6 +31,35 @@ class TwoXChecker:
         seconds = elapsed.seconds % 60
         return f"{hours}h {minutes}m {seconds}s"
     
+    async def update_database(self, ca, hit_2x, multiplier=None):
+        """Update database with 2X or other multiplier information"""
+        try:
+            with sqlite3.connect('memedb.db') as conn:
+                cursor = conn.cursor()
+                
+                # Check if the token exists in the database
+                cursor.execute("SELECT id FROM multialerts WHERE ca = ?", (ca,))
+                result = cursor.fetchone()
+                
+                if result:
+                    # Update twox column
+                    cursor.execute("""
+                        UPDATE multialerts 
+                        SET twox = ?
+                        WHERE ca = ?
+                    """, (hit_2x, ca))
+                    
+                    # If we want to store the specific multiplier, we could add this in a future schema update
+                    # For now, we'll just use the boolean twox field
+                    
+                    conn.commit()
+                    print(f"Database updated for {ca}: twox = {hit_2x}")
+                else:
+                    print(f"Warning: Token {ca} not found in database")
+        
+        except Exception as e:
+            print(f"Error updating database for {ca}: {str(e)}")
+    
     async def monitor_token_mc(self, ca, token_name):
         retries = 0
         max_retries = 3
@@ -37,6 +67,7 @@ class TwoXChecker:
         success_count = 0  # Track number of successful multiplier hits
         max_monitors = 30  # Max monitoring attempts before removal
         max_successes = 2  # Max number of successful hits before removal
+        hit_2x = False
 
         while True:
             try:
@@ -52,7 +83,7 @@ class TwoXChecker:
                         del self.start_times[ca]
                     return
 
-                current_mc = await self.mc.calculate_marketcap(ca)
+                current_mc = await self.mc.marketcap(ca)
                 if current_mc is None or current_mc == 0:
                     retries += 1
                     if retries > max_retries:
@@ -72,13 +103,6 @@ class TwoXChecker:
                         x_val = (increase_percentage + 100) / 100
                         rounded_x = round(x_val * 2) / 2
                         
-                        # Print every MC update for testing
-                        #print(f"\nMC Update for {token_name} (Monitor #{monitor_count}/30):")
-                        #print(f"Current MC: ${current_mc:,.2f}")
-                        #print(f"Change: {increase_percentage:,.2f}%")
-                        #print(f"X Value: {x_val:,.2f}x")
-                        #print("-" * 30)
-                        
                         # Alert on any significant multiplier, regardless of previous alerts
                         if increase_percentage > 90 and rounded_x not in self.achieved_multipliers[ca]:
                             self.achieved_multipliers[ca].add(rounded_x)  # Track this multiplier as achieved
@@ -90,6 +114,12 @@ class TwoXChecker:
                             print(f"Current MC: ${current_mc:,.2f}")
                             print(f"Increase: {increase_percentage:.2f}%")
                             print("-" * 50)
+                            
+                            # Check if token hit 2X or greater
+                            if rounded_x >= 2 and not hit_2x:
+                                hit_2x = True
+                                # Update database with 2X status
+                                await self.update_database(ca, True, rounded_x)
                             
                             await self.webhook.twox_multialert_webhook(
                                 token_name=token_name,

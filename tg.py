@@ -188,7 +188,7 @@ class BundleBot:
             print(f"Exception as {e}: Bundle bot down soul scanner criteria met for: {ca}")
             return None
         
-class WalletPNL:
+class WAlletPNL:
     def __init__(self):
         pass
         

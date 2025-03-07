@@ -7,7 +7,7 @@ from collections import defaultdict
 import pandas as pd
 from env import BIRDEYE_API_KEY
 import json
-from walletpnl import WAlletPNL
+from walletpnl import WalletPNL
 from env import LARGE_BUY_WEBHOOK
 from webhooks import TradeWebhook
 class Trade_300:
@@ -267,7 +267,7 @@ class Trade_300:
 
 async def scan_trades(pair_address, token_name, token_ca, scan_interval):
     trader = Trade_300()
-    w = WAlletPNL()
+    w = WalletPNL()
     webhook = TradeWebhook()
     iteration = 0
 

@@ -534,6 +534,10 @@ class TokenomicScore:
             score = 0
             max_subscore = 10.0
 
+            # Convert None values to 0 to avoid comparison errors
+            total_trade_change = 0 if total_trade_change is None else total_trade_change
+            buys_change = 0 if buys_change is None else buys_change
+
             #total trade & buy change in % confluence
             if 5 <= total_trade_change <= 10 and 10 <= buys_change <= 15:
                 score += 1
@@ -548,8 +552,6 @@ class TokenomicScore:
             elif total_trade_change > 50 and buys_change >= 49:
                 score += 10
             
-            
-
             #trade percentage change evaluation
             if 10 <= total_trade_change <= 20:
                 score += 1

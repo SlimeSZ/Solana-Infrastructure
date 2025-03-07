@@ -4,13 +4,13 @@ import requests
 import json
 from typing import Dict, Any, Tuple
 from env import BIRDEYE_API_KEY
-from backupsupply import Supply
 
 class MarketcapFetcher:
     def __init__(self, rpc_endpoint: str = "https://api.mainnet-beta.solana.com"):
         self.rpc_endpoint = rpc_endpoint
         self.gecko_base_url = "https://api.geckoterminal.com/api/v2/simple/networks"
         self.supply_backup = Supply()
+        self.price = Price()
 
     async def get_token_supply(self, ca: str) -> float:
         payload = {
@@ -91,33 +91,57 @@ class MarketcapFetcher:
             return None
 
     async def calculate_marketcap(self, ca: str) -> float:
+        """
+        Calculate token marketcap by multiplying supply by price.
+        Returns 0.0 on failure instead of None to prevent comparison errors.
+        """
+        if not ca or not isinstance(ca, str):
+            print("Invalid CA provided")
+            return 0.0
+            
         try:
+            # Normalize CA by trimming whitespace
+            ca = ca.strip()
+            
             # Get supply (this already includes backup attempt)
             supply = await self.get_token_supply(ca)
-            if not supply:
-                print("Failed to get supply from both RPC and backup")
-                return None
+            
+            # Handle None or non-positive supply
+            if supply is None or supply <= 0:
+                print(f"Failed to get valid supply for {ca}, defaulting to 0")
+                return 0.0
                 
-            print(f"Final supply obtained: {supply}")  # Debug line
+            print(f"Supply obtained: {supply}")
                     
             # Get price
-            price = await self.backup_token_price(ca)
-            if not price:
-                print("Failed to get price from Birdeye")
-                return None
+            price = await self.price.get_price_only(ca)
+            
+            # Handle None price
+            if price is None:
+                print(f"Failed to get price for {ca}, defaulting to 0")
+                return 0.0
                 
+            # Ensure we have valid numerical values
+            try:
+                supply = float(supply)
+                price = float(price)
+            except (ValueError, TypeError):
+                print(f"Error converting price or supply to float for {ca}")
+                return 0.0
+            
+            # Calculate marketcap
             mc = price * supply
-            print(f"Calculated MC: {mc}")
+            print(f"Calculated MC for {ca}: {mc}")
             return mc
                 
         except Exception as e:
-            print(f"Error calculating marketcap: {str(e)}")
-            return None
+            print(f"Error calculating marketcap for {ca}: {str(e)}")
+            return 0.0  # Return 0 instead of None to prevent comparison errors
 
 class Main:
     def __init__(self):
         self.rpc = MarketcapFetcher()
-        self.ca = "e7DX4nGxAnJcUNBNF2UTBPZYRseLXQfegh8Cxfstart"
+        self.ca = "CUUZJST5B8fs43ikm5adsQrw4qz5n4mAgEiTzii2pump"
     
     async def run(self):
         data = await self.rpc.calculate_marketcap(self.ca)

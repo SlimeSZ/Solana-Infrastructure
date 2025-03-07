@@ -3,10 +3,11 @@ import asyncio
 import aiohttp
 from env import MORALIS_API_KEY
 from marketcap import MarketcapFetcher
+from marketcapfinal import Supply, Price, Marketcap
 
 class OH:
     def __init__(self):
-        self.supply = MarketcapFetcher()
+        pass
 
     async def fetch(self, timeframe, pair_address):
         url = f"https://solana-gateway.moralis.io/token/mainnet/pairs/{pair_address}/ohlcv"
@@ -33,19 +34,3 @@ class OH:
             print(f"{str(e)}")
             return None
         
-    async def _supply(self, ca):
-        supply = await self.supply.get_token_supply(ca)
-        return supply
-        
-
-class Main:
-    def __init__(self):
-        self.o = OH()
-        self.pair_address = "7nGr7xqRpHDJs9pFQzFAsMtVxNatvVfngJyDnfLekU7S"
-
-    async def run(self):
-        data = await self.o.fetch(timeframe="30s", pair_address=self.pair_address)
-        print(data)
-if __name__ == "__main__":
-    main = Main()
-    asyncio.run(main.run())
