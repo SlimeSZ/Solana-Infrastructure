@@ -64,65 +64,95 @@ class MultiAlert:
         pass
 
     async def multialert_webhook(self, 
-                        token_name, 
-                        ca, 
-                        websites_data, 
-                        marketcap, 
-                        m5_vol, 
-                        liquidity, 
-                        telegram, 
-                        twitter, 
-                        photon_link, 
-                        bull_x_link, 
-                        dex_link, 
-                        swt_count, 
-                        swt_buys, 
-                        swt_sells, 
-                        fresh_count, 
-                        fresh_buys, 
-                        fresh_sells, 
-                        last_3_tx, 
-                        holder_count, 
-                        dev_holding_percentage, 
-                        token_migrated, 
-                        passes_soulscanner, 
-                        passes_bundlebot, 
-                        dex_paid, 
-                        token_age, 
-                        time_to_bond, 
-                        top_10_holding_percentage, 
-                        holders_over_5, 
-                        wallet_data, 
-                        m30_vol, 
-                        m30_vol_change, 
-                        new_unique_wallets_30m, 
-                        new_unique_wallet_30m_change, 
-                        trade_change_30m, 
-                        buy_change_30m, 
-                        sell_change_30m, 
-                        channel_text, 
-                        sniper_percent, 
-                        dev_token_created, 
-                        dev_rug_count, 
-                        dev_successful_count, 
-                        dev_rug_rate, 
-                        support, 
-                        support_strength, 
-                        resistance, 
-                        resistance_strength, 
-                        ob_top, 
-                        ob_bottom, 
-                        ob_volume, 
-                        ob_strength, 
-                        scans, 
-                        comp_score):
+                    token_name, 
+                    ca, 
+                    websites_data, 
+                    marketcap, 
+                    m5_vol, 
+                    liquidity, 
+                    telegram, 
+                    twitter, 
+                    photon_link, 
+                    bull_x_link, 
+                    dex_link, 
+                    swt_count, 
+                    swt_buys, 
+                    swt_sells, 
+                    fresh_count, 
+                    fresh_buys, 
+                    fresh_sells, 
+                    last_3_tx, 
+                    holder_count, 
+                    dev_holding_percentage, 
+                    token_migrated, 
+                    passes_soulscanner, 
+                    passes_bundlebot, 
+                    dex_paid, 
+                    token_age, 
+                    time_to_bond, 
+                    top_10_holding_percentage, 
+                    holders_over_5, 
+                    wallet_data, 
+                    m30_vol, 
+                    m30_vol_change, 
+                    new_unique_wallets_30m, 
+                    new_unique_wallet_30m_change, 
+                    trade_change_30m, 
+                    buy_change_30m, 
+                    sell_change_30m, 
+                    channel_text, 
+                    sniper_percent, 
+                    dev_token_created, 
+                    dev_rug_count, 
+                    dev_successful_count, 
+                    dev_rug_rate, 
+                    support, 
+                    support_strength, 
+                    resistance, 
+                    resistance_strength, 
+                    ob_top, 
+                    ob_bottom, 
+                    ob_volume, 
+                    ob_strength, 
+                    scans, 
+                    comp_score):
         try:
+            # Handle coroutines - await any parameters that might be coroutines
+            if asyncio.iscoroutine(marketcap):
+                marketcap = await marketcap
+            if asyncio.iscoroutine(liquidity):
+                liquidity = await liquidity
+            if asyncio.iscoroutine(m5_vol):
+                m5_vol = await m5_vol
+            if asyncio.iscoroutine(m30_vol):
+                m30_vol = await m30_vol
+                
+            # Convert to appropriate types
+            try:
+                marketcap = float(marketcap) if marketcap is not None else 0.0
+            except (TypeError, ValueError):
+                marketcap = 0.0
+                
+            try:
+                liquidity = float(liquidity) if liquidity is not None else 0.0
+            except (TypeError, ValueError):
+                liquidity = 0.0
+                
+            try:
+                m5_vol = float(m5_vol) if m5_vol is not None else 0.0
+            except (TypeError, ValueError):
+                m5_vol = 0.0
+                
+            try:
+                m30_vol = float(m30_vol) if m30_vol is not None else 0.0
+            except (TypeError, ValueError):
+                m30_vol = 0.0
+                
+            # Process other parameters
             new_unique_wallet_30m_change = new_unique_wallet_30m_change or 0
             trade_change_30m = trade_change_30m or 0
             buy_change_30m = buy_change_30m or 0
             sell_change_30m = sell_change_30m or 0
-            m5_vol = m5_vol or 0
-            m30_vol = m30_vol or 0
             m30_vol_change = m30_vol_change or 0
             uniqueplaceholder = "Increase" if new_unique_wallet_30m_change > 0 else "Decrease"
             tradeplaceholder = "up" if trade_change_30m > 0 else "down"
@@ -130,6 +160,12 @@ class MultiAlert:
             sellplaceholder = "up" if sell_change_30m > 0 else "down"
             sniperplaceholder = "⚠️" if sniper_percent >= 45 else "✅"
             score_emoji = "🏆" if comp_score > 50 else "⚠️"
+
+            # Handle time_to_bond format
+            if isinstance(time_to_bond, dict) and 'value' in time_to_bond and 'unit' in time_to_bond:
+                time_to_bond_str = f"{time_to_bond['value']} {time_to_bond['unit']}"
+            else:
+                time_to_bond_str = str(time_to_bond)
 
             embed = {
                 "title": "🚨 Multi Ape Alert",
@@ -147,7 +183,7 @@ class MultiAlert:
                             f" `Buys {buyplaceholder} {buy_change_30m:.2f}% last 30 min `\n"
                             f" `Sells {sellplaceholder} {sell_change_30m:.2f}% last 30 min`\n"
                             f"⏰ `Token Age`: {token_age['value']} {token_age['unit']}\n" 
-                            f" `Time to Bond`: {time_to_bond}"
+                            f" `Time to Bond`: {time_to_bond_str}"
                         ),
                         "inline": False
                     },
@@ -194,15 +230,24 @@ class MultiAlert:
             if wallet_data and isinstance(wallet_data, dict):  # Extra type check for safety
                 wallet_analysis = ""
                 for wallet_address, data in wallet_data.items():
-                    wallet_analysis += (
-                        f"`Wallet {wallet_address[:8]}`...\n"
-                        f"📈 PNL: {data['pnl']:.4f} SOL\n"
-                        f"🎯 Tokens Traded: {data['tokens_traded']}\n"
-                        f"✅ Wins: {data['wins']}\n"
-                        f"❌ Losses: {data['losses']}\n"
-                        f"    Avg Entry: {data['avg_entry']:.2f} SOL\n"
-                        f"{'─' * 20}\n"
-                    )
+                    try:
+                        avg_entry = data.get('avg_entry', 0)
+                        if avg_entry is None:
+                            avg_entry = 0
+                            
+                        wallet_analysis += (
+                            f"`Wallet {wallet_address[:8]}`...\n"
+                            f"📈 PNL: {data.get('pnl', 0):.4f} SOL\n"
+                            f"🎯 Tokens Traded: {data.get('tokens_traded', 0)}\n"
+                            f"✅ Wins: {data.get('wins', 0)}\n"
+                            f"❌ Losses: {data.get('losses', 0)}\n"
+                            f"    Avg Entry: {avg_entry:.2f} SOL\n"
+                            f"{'─' * 20}\n"
+                        )
+                    except Exception as e:
+                        print(f"Error formatting wallet data: {str(e)}")
+                        continue
+                    
                 if wallet_analysis:
                     embed["fields"].append({
                         "name": "Top 3 Wallets Latest Trade Report",
@@ -212,20 +257,23 @@ class MultiAlert:
             
             # Add Dev History section if available
             if dev_token_created and dev_rug_count is not None and dev_successful_count is not None and dev_rug_rate is not None:
-                # Format rug rate as percentage
-                rug_rate_percentage = dev_rug_rate * 100 if isinstance(dev_rug_rate, (int, float)) else 0
-                
-                dev_analysis = (
-                    f"Tokens Created: `{dev_token_created}`\n"
-                    f"Rugs: `{dev_rug_count}` || `{rug_rate_percentage:.2f}%`\n"
-                    f"Successful: `{dev_successful_count}`"
-                )
-                
-                embed["fields"].append({
-                    "name": "👨‍💻 Dev Wallet History",
-                    "value": dev_analysis,
-                    "inline": False
-                })
+                try:
+                    # Format rug rate as percentage
+                    rug_rate_percentage = dev_rug_rate * 100 if isinstance(dev_rug_rate, (int, float)) else 0
+                    
+                    dev_analysis = (
+                        f"Tokens Created: `{dev_token_created}`\n"
+                        f"Rugs: `{dev_rug_count}` || `{rug_rate_percentage:.2f}%`\n"
+                        f"Successful: `{dev_successful_count}`"
+                    )
+                    
+                    embed["fields"].append({
+                        "name": "👨‍💻 Dev Wallet History",
+                        "value": dev_analysis,
+                        "inline": False
+                    })
+                except Exception as e:
+                    print(f"Error adding dev history section: {str(e)}")
 
             if last_3_tx:
                 tx_summary = ""
@@ -239,30 +287,46 @@ class MultiAlert:
                     })
 
             if support and resistance:
-                sr_report = (
-                    f"Support MC: `${support:.2f}`\n"
-                    f"Support lvl Strength: `{support_strength:.2f}%`\n"
-                    f"Resistance MC: `${resistance:.2f}`\n"
-                    f"Resistance lvl Strength: `{resistance_strength:.2f}%`"
-                )
-                embed["fields"].append({
-                    "name": "🎯Support/Resistance Levels🎯",
-                    "value": sr_report,
-                    "inline": False
-                })
+                try:
+                    support = float(support) if support is not None else 0.0
+                    resistance = float(resistance) if resistance is not None else 0.0
+                    support_strength = float(support_strength) if support_strength is not None else 0.0
+                    resistance_strength = float(resistance_strength) if resistance_strength is not None else 0.0
+                    
+                    sr_report = (
+                        f"Support MC: `${support:.2f}`\n"
+                        f"Support lvl Strength: `{support_strength:.2f}%`\n"
+                        f"Resistance MC: `${resistance:.2f}`\n"
+                        f"Resistance lvl Strength: `{resistance_strength:.2f}%`"
+                    )
+                    embed["fields"].append({
+                        "name": "🎯Support/Resistance Levels🎯",
+                        "value": sr_report,
+                        "inline": False
+                    })
+                except Exception as e:
+                    print(f"Error adding SR data: {str(e)}")
             
             if ob_top and ob_volume: 
-                ob_strengthh = ob_strength * 100
-                ob_report = (
-                    f"Orderblock: `${ob_bottom:.2f} - ${ob_top:.2f}`\n"
-                    f"Orderblock Vol: `{ob_volume:.2f}`\n"
-                    f"Orderblock Strength: `{ob_strengthh:.2f}%`"
-                )
-                embed["fields"].append({
-                    "name": "🎯Orderblock Levels🎯",
-                    "value": ob_report,
-                    "inline": False
-                })
+                try:
+                    ob_top = float(ob_top) if ob_top is not None else 0.0
+                    ob_bottom = float(ob_bottom) if ob_bottom is not None else 0.0
+                    ob_volume = float(ob_volume) if ob_volume is not None else 0.0
+                    ob_strength = float(ob_strength) if ob_strength is not None else 0.0
+                    
+                    ob_strength_percent = ob_strength * 100
+                    ob_report = (
+                        f"Orderblock: `${ob_bottom:.2f} - ${ob_top:.2f}`\n"
+                        f"Orderblock Vol: `{ob_volume:.2f}`\n"
+                        f"Orderblock Strength: `{ob_strength_percent:.2f}%`"
+                    )
+                    embed["fields"].append({
+                        "name": "🎯Orderblock Levels🎯",
+                        "value": ob_report,
+                        "inline": False
+                    })
+                except Exception as e:
+                    print(f"Error adding OB data: {str(e)}")
 
             links = (
                 f"🔗 DexScreener: [Chart]({dex_link})\n"
